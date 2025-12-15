@@ -1680,6 +1680,20 @@ public final class SystemServer implements Dumpable {
             wm.onInitReady();
             t.traceEnd();
 
+
+            // Start RAG Service
+            t.traceBegin("StartRagService");
+            try {
+                Slog.i(TAG, "RAG Service");
+                mSystemServiceManager.startService(
+                    "com.android.server.rag.RagService"
+                );
+            } catch (Throwable e) {
+                reportWtf("starting RAG Service", e);
+            }
+            t.traceEnd();
+
+
             // Start receiving calls from SensorManager services. Start in a separate thread
             // because it need to connect to SensorManager. This has to start
             // after PHASE_WAIT_FOR_SENSOR_SERVICE is done.
