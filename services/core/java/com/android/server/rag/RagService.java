@@ -22,7 +22,10 @@ import java.util.List;
  *   1. Creates IndexQueue (singleton)
  *   2. Starts JarvisFileObserver watching external storage
  *   3. Schedules RagIndexWorker via WorkManager (charging constraint)
+<<<<<<< HEAD
  *   4. Initializes ObjectBox store
+=======
+>>>>>>> 4ae7b7cbcd22 (feat: add IndexQueue, RagIndexWorker, wire FileObserver pipeline into RagService)
  *
  * Query flow (immediate, no constraints):
  *   processQuery() → Stage 1 metadata search → Stage 2 cactus_embed → cactus_complete
@@ -30,9 +33,12 @@ import java.util.List;
 public class RagService extends SystemService {
     private static final String TAG = "RagService";
 
+<<<<<<< HEAD
     // ObjectBox store directory — inside system data partition
     private static final String STORE_DIR = "/data/system/jarvis/objectbox";
 
+=======
+>>>>>>> 4ae7b7cbcd22 (feat: add IndexQueue, RagIndexWorker, wire FileObserver pipeline into RagService)
     // Directories to watch — expandable
     private static final String[] WATCH_PATHS = {
         Environment.getExternalStorageDirectory().getAbsolutePath() + "/Documents",
@@ -68,10 +74,14 @@ public class RagService extends SystemService {
                 RagIndexWorker.schedule(mContext);
 
                 // TODO: Step 3 — initialize Cactus (CactusWrapper.init())
+<<<<<<< HEAD
 
                 // Step 4 — initialize ObjectBox store
                 new java.io.File(STORE_DIR).mkdirs();
                 JarvisStore.init(STORE_DIR);
+=======
+                // TODO: Step 4 — initialize ObjectBox store
+>>>>>>> 4ae7b7cbcd22 (feat: add IndexQueue, RagIndexWorker, wire FileObserver pipeline into RagService)
 
                 mIsReady = true;
                 Log.i(TAG, "RAG service initialized successfully");
@@ -140,6 +150,10 @@ public class RagService extends SystemService {
 
             Log.i(TAG, "Manual index request: " + path);
 
+<<<<<<< HEAD
+=======
+            // Push directly to IndexQueue — worker will pick it up
+>>>>>>> 4ae7b7cbcd22 (feat: add IndexQueue, RagIndexWorker, wire FileObserver pipeline into RagService)
             try {
                 IndexQueue.getInstance().getQueue().put(
                         new JarvisFileObserver.IndexTask(path, JarvisFileObserver.TaskType.INDEX));
