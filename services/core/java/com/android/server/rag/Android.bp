@@ -1,19 +1,16 @@
-// Build file for RAG Service
-
+// Build file for RAG System Service
 java_library {
     name: "services.rag",
     srcs: [
         "**/*.java",
     ],
-    
     static_libs: [
-        // Add dependencies here as we add them
-        // "cactus-sdk",
-        // "objectbox-android",
+        "objectbox-android",
+        "objectbox-java",
+        "androidx.work_work-runtime",
     ],
-    
     libs: [
         "services.core",
+        "framework",
     ],
 }
-
