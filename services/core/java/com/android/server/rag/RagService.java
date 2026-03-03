@@ -2,164 +2,162 @@ package com.android.server.rag;
 
 import android.content.Context;
 import android.os.Binder;
-import android.rag.IRagService;
+import android.os.Environment;
+import android.app.rag.IRagService;
 import android.util.Log;
 
 import com.android.server.SystemService;
 
+import java.util.List;
+
 /**
  * JarvisOS RAG System Service
- * 
- * This service runs in the system_server process and provides
- * RAG (Retrieval-Augmented Generation) capabilities to all apps.
- * 
+ *
+ * Runs in system_server. Provides RAG capabilities to all apps.
+ *
  * Architecture:
  *   App → RagManager → Binder IPC → RagService → Cactus LLM
- * 
- * The service handles:
- *   - Document indexing and chunking
- *   - Vector embedding generation
- *   - Semantic search over indexed content
- *   - LLM query processing with retrieved context
+ *
+ * On startup:
+ *   1. Creates IndexQueue (singleton)
+ *   2. Starts JarvisFileObserver watching external storage
+ *   3. Schedules RagIndexWorker via WorkManager (charging constraint)
+ *   4. Initializes ObjectBox store
+ *
+ * Query flow (immediate, no constraints):
+ *   processQuery() → Stage 1 metadata search → Stage 2 cactus_embed → cactus_complete
  */
 public class RagService extends SystemService {
     private static final String TAG = "RagService";
-    
+
+    // ObjectBox store directory — inside system data partition
+    private static final String STORE_DIR = "/data/system/jarvis/objectbox";
+
+    // Directories to watch — expandable
+    private static final String[] WATCH_PATHS = {
+        Environment.getExternalStorageDirectory().getAbsolutePath() + "/Documents",
+        Environment.getExternalStorageDirectory().getAbsolutePath() + "/Downloads",
+    };
+
     private final Context mContext;
     private boolean mIsReady = false;
-    
-    /**
-     * Constructor called by SystemServer
-     */
+    private JarvisFileObserver[] mFileObservers;
+
     public RagService(Context context) {
         super(context);
         mContext = context;
         Log.i(TAG, "RagService created");
     }
-    
-    /**
-     * Called when the service should start
-     */
+
     @Override
     public void onStart() {
         Log.i(TAG, "Starting RAG service");
-        
-        // Publish the service so apps can find it
         publishBinderService("rag", mBinder);
-        
-        // Initialize in background
         initializeAsync();
     }
-    
-    /**
-     * Initialize the RAG service asynchronously
-     */
+
     private void initializeAsync() {
         new Thread(() -> {
             try {
                 Log.i(TAG, "Initializing RAG service...");
-                
-                // TODO: Initialize Cactus LLM
-                // TODO: Load embedding model
-                // TODO: Initialize vector store
-                
+
+                // Step 1 — start file observers
+                startFileObservers();
+
+                // Step 2 — schedule background indexing worker
+                RagIndexWorker.schedule(mContext);
+
+                // TODO: Step 3 — initialize Cactus (CactusWrapper.init())
+
+                // Step 4 — initialize ObjectBox store
+                new java.io.File(STORE_DIR).mkdirs();
+                JarvisStore.init(STORE_DIR);
+
                 mIsReady = true;
                 Log.i(TAG, "RAG service initialized successfully");
-                
+
             } catch (Exception e) {
                 Log.e(TAG, "Failed to initialize RAG service", e);
                 mIsReady = false;
             }
         }, "RagServiceInit").start();
     }
-    
-    /**
-     * Binder interface implementation
-     * 
-     * This is what apps actually talk to via Binder IPC.
-     * Each method runs with the caller's permissions.
-     */
+
+    private void startFileObservers() {
+        mFileObservers = new JarvisFileObserver[WATCH_PATHS.length];
+        for (int i = 0; i < WATCH_PATHS.length; i++) {
+            mFileObservers[i] = new JarvisFileObserver(
+                    WATCH_PATHS[i],
+                    IndexQueue.getInstance().getQueue());
+            mFileObservers[i].startWatching();
+            Log.i(TAG, "FileObserver started on: " + WATCH_PATHS[i]);
+        }
+    }
+
     private final IRagService.Stub mBinder = new IRagService.Stub() {
-        
+
         @Override
         public String processQuery(String query) {
-            // Enforce permission check
             enforceCallingPermission();
-            
-            // Validate input
+
             if (query == null || query.trim().isEmpty()) {
                 throw new IllegalArgumentException("Query cannot be null or empty");
             }
-            
-            // Check if ready
+
             if (!mIsReady) {
-                Log.w(TAG, "Service not ready, returning error");
                 return "Error: RAG service is still initializing. Please try again.";
             }
-            
+
             Log.i(TAG, "Processing query: " + query.substring(0, Math.min(50, query.length())) + "...");
-            
+
             try {
-                // TODO: Implement actual RAG pipeline
-                // 1. Generate query embedding
-                // 2. Search vector store for relevant chunks
-                // 3. Build context from retrieved chunks
-                // 4. Send to LLM with context
-                // 5. Return response
-                
-                // For now, return placeholder
-                return "RAG Service received: \"" + query + "\"\n\n" +
-                       "TODO: Implement RAG pipeline\n" +
-                       "- Retrieve relevant context\n" +
-                       "- Generate LLM response";
-                
+                // Stage 1 — metadata search (instant, free)
+                // TODO: List<SourceFile> candidates = MetadataSearch.search(query);
+
+                // Stage 2 — semantic search on shortlist (on demand)
+                // TODO: float[] queryEmbedding = CactusWrapper.embed(query);
+                // TODO: List<DocumentChunk> chunks = CactusWrapper.indexQuery(queryEmbedding, candidates);
+
+                // Stage 3 — LLM completion with context
+                // TODO: String context = buildContext(chunks);
+                // TODO: return CactusWrapper.complete(query, context);
+
+                return "RAG Service received: \"" + query + "\"\n\nTODO: Implement RAG pipeline";
+
             } catch (Exception e) {
                 Log.e(TAG, "Error processing query", e);
                 return "Error: " + e.getMessage();
             }
         }
-        
+
         @Override
         public void indexDocument(String path) {
-            // Enforce permission check
             enforceCallingPermission();
-            
-            // Validate input
+
             if (path == null || path.trim().isEmpty()) {
                 throw new IllegalArgumentException("Path cannot be null or empty");
             }
-            
-            Log.i(TAG, "Indexing document: " + path);
-            
-            // TODO: Implement document indexing
-            // 1. Read file content
-            // 2. Chunk the document
-            // 3. Generate embeddings for each chunk
-            // 4. Store in vector database
-            
-            Log.w(TAG, "Document indexing not yet implemented");
+
+            Log.i(TAG, "Manual index request: " + path);
+
+            try {
+                IndexQueue.getInstance().getQueue().put(
+                        new JarvisFileObserver.IndexTask(path, JarvisFileObserver.TaskType.INDEX));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Log.w(TAG, "Interrupted while queuing manual index: " + path);
+            }
         }
-        
+
         @Override
         public boolean isReady() {
             return mIsReady;
         }
-        
-        /**
-         * Enforce that caller has permission to use RAG service
-         */
+
         private void enforceCallingPermission() {
-            // TODO: Define custom permission in AndroidManifest.xml
-            // For now, just check that caller is not root/system
-            
             final int callingUid = Binder.getCallingUid();
             Log.d(TAG, "RAG service called by UID: " + callingUid);
-            
-            // In production, check actual permission:
-            // mContext.enforceCallingPermission(
-            //     "android.permission.ACCESS_RAG_SERVICE",
-            //     "Requires ACCESS_RAG_SERVICE permission"
-            // );
+            // TODO: mContext.enforceCallingPermission("android.permission.ACCESS_RAG_SERVICE", "...");
         }
     };
 }
