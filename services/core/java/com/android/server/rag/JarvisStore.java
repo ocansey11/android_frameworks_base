@@ -4,7 +4,6 @@ import android.util.Log;
 
 import io.objectbox.Box;
 import io.objectbox.BoxStore;
-import io.objectbox.android.AndroidObjectBrowser;
 
 /**
  * JarvisStore — ObjectBox store singleton.
