@@ -1,32 +1,27 @@
-package android.rag;
+package android.app.rag;
 
 /**
- * Binder interface for JarvisOS RAG Service
- * 
- * This is the contract between apps and the system service.
- * Apps use RagManager which calls these methods via Binder IPC.
+ * Binder interface for the JarvisOS RAG Service.
+ *
+ * Apps talk to this via RagManager — never directly.
+ * The service implementation lives in RagService.java (com.android.server.rag).
+ *
+ * Adding a method here requires:
+ *   1. Add the method signature below
+ *   2. Implement it in RagService.mBinder
+ *   3. Add the public wrapper in RagManager
  */
 interface IRagService {
-    /**
-     * Submit a query to the RAG service
-     * 
-     * @param query The user's question
-     * @return The LLM response with context
-     */
+
+    /** Submit a natural language query. Returns LLM response string. */
     String processQuery(String query);
-    
-    /**
-     * Index a document for RAG retrieval
-     * 
-     * @param path File path to index
-     */
+
+    /** Push a file path into IndexQueue for background indexing. */
     void indexDocument(String path);
-    
-    /**
-     * Check if the RAG service is ready
-     * 
-     * @return true if initialized and ready
-     */
+
+    /** Returns true if the file is in ObjectBox with isIndexed = true. */
+    boolean isIndexed(String path);
+
+    /** Returns true if RagService has finished initialization. */
     boolean isReady();
 }
-

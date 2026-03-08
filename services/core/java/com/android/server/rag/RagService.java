@@ -151,6 +151,22 @@ public class RagService extends SystemService {
         }
 
         @Override
+        public boolean isIndexed(String path) {
+            enforceCallingPermission();
+            if (path == null || path.trim().isEmpty()) return false;
+            try {
+                SourceFile sf = JarvisStore.box(SourceFile.class).query()
+                        .equal(SourceFile_.filePath, path,
+                                io.objectbox.query.QueryBuilder.StringOrder.CASE_INSENSITIVE)
+                        .build().findFirst();
+                return sf != null && sf.isIndexed;
+            } catch (Exception e) {
+                Log.w(TAG, "isIndexed() failed for: " + path, e);
+                return false;
+            }
+        }
+
+        @Override
         public boolean isReady() {
             return mIsReady;
         }
