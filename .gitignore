@@ -7,3 +7,4 @@ gen/
 *.code-workspace
 .gradle/
 *.md
+services/core/java/com/android/server/rag/*.md
