@@ -24,7 +24,6 @@ public class SourceFile {
     public long fileSizeBytes;
     public String fileHash;       // SHA-256 to detect changes, avoid re-embedding
     public boolean isIndexed;
-    public int cactusIndexId;     // ID in Cactus's binary index (index.bin/data.bin) — NOT ObjectBox
     public long createdAt;
     public long lastModifiedAt;
     public long lastAccessedAt;

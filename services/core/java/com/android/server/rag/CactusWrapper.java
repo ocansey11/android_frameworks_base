@@ -2,6 +2,10 @@ package com.android.server.rag;
 
 import android.util.Log;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 /**
  * JNI bridge between JarvisOS Java system services and the Cactus C++ engine.
  *
@@ -272,13 +276,25 @@ public class CactusWrapper {
         // If we have retrieved context, inject it as a system message
         String finalMessages = messagesJson;
         if (context != null && !context.trim().isEmpty()) {
-            // Prepend system message with context
-            // Format: [{"role":"system","content":"Context:\n...\n\nAnswer based on the above."},...]
-            String systemMsg = "{\"role\":\"system\",\"content\":\"Context:\\n"
-                    + context.replace("\"", "\\\"").replace("\n", "\\n")
-                    + "\\n\\nAnswer based on the above context.\"}";
-            // Insert before the first message
-            finalMessages = "[" + systemMsg + "," + messagesJson.substring(1);
+            try {
+                // Build system message using org.json — safe escaping, no manual string hacking
+                JSONObject systemMsg = new JSONObject();
+                systemMsg.put("role", "system");
+                systemMsg.put("content", "Context:\n" + context
+                        + "\n\nAnswer based on the above context.");
+
+                // Prepend system message to the existing messages array
+                JSONArray messages = new JSONArray(messagesJson);
+                JSONArray withContext = new JSONArray();
+                withContext.put(systemMsg);
+                for (int i = 0; i < messages.length(); i++) {
+                    withContext.put(messages.get(i));
+                }
+                finalMessages = withContext.toString();
+            } catch (JSONException e) {
+                Log.e(TAG, "complete: failed to inject context — malformed messagesJson", e);
+                return null;
+            }
         }
 
         String result = nativeComplete(modelHandle, finalMessages, null, toolsJson);

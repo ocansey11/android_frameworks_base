@@ -139,7 +139,7 @@ public class RagIndexWorker extends Worker {
         }
 
         // --- Step 4: Chunk ---
-        List<Chunk> chunks = ChunkingStrategy.getInstance().chunkFile(task.filePath);
+        List<Chunk> chunks = ChunkingStrategy.getInstance().chunkText(text, task.filePath);
         if (chunks.isEmpty()) {
             Log.w(TAG, "No chunks produced from: " + task.filePath);
             return;

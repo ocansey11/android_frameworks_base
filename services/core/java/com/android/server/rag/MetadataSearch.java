@@ -102,12 +102,26 @@ public class MetadataSearch {
             }
 
             // --- Pass 6: AccessLog frequency boost ---
-            for (ScoredFile sf : scored) {
-                long helpfulCount = accessBox.query()
-                        .equal(AccessLog_.fileId, sf.file.id)
+            // Bulk query all helpful access logs for every scored file in one hit,
+            // then tally in memory — avoids N separate queries in a loop.
+            if (!scored.isEmpty()) {
+                long[] fileIds = new long[scored.size()];
+                for (int i = 0; i < scored.size(); i++) fileIds[i] = scored.get(i).file.id;
+
+                List<AccessLog> helpfulLogs = accessBox.query()
+                        .in(AccessLog_.fileId, fileIds)
                         .equal(AccessLog_.wasHelpful, true)
-                        .build().count();
-                sf.score += helpfulCount * 0.2;
+                        .build().find();
+
+                // Count hits per fileId in a simple map
+                java.util.Map<Long, Integer> hitCount = new java.util.HashMap<>();
+                for (AccessLog log : helpfulLogs) {
+                    hitCount.put(log.fileId, hitCount.getOrDefault(log.fileId, 0) + 1);
+                }
+                for (ScoredFile sf : scored) {
+                    Integer count = hitCount.get(sf.file.id);
+                    if (count != null) sf.score += count * 0.2;
+                }
             }
 
         } catch (Exception e) {

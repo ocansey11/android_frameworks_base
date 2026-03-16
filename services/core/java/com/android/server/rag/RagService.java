@@ -34,14 +34,17 @@ public class RagService extends SystemService {
     private static final String STORE_DIR = "/data/system/jarvis/objectbox";
 
     // Directories to watch — expandable
+    // Each path is watched recursively (JarvisFileObserver walks subdirectories)
     private static final String[] WATCH_PATHS = {
         Environment.getExternalStorageDirectory().getAbsolutePath() + "/Documents",
         Environment.getExternalStorageDirectory().getAbsolutePath() + "/Downloads",
+        Environment.getExternalStorageDirectory().getAbsolutePath() + "/Pictures",
     };
 
     private final Context mContext;
     private boolean mIsReady = false;
     private JarvisFileObserver[] mFileObservers;
+    private ToolScannerService mToolScanner;
 
     public RagService(Context context) {
         super(context);
@@ -61,17 +64,21 @@ public class RagService extends SystemService {
             try {
                 Log.i(TAG, "Initializing RAG service...");
 
-                // Step 1 — start file observers
-                startFileObservers();
-
-                // Step 2 — schedule background indexing worker
-                RagIndexWorker.schedule(mContext);
-
-                // TODO: Step 3 — initialize Cactus (CactusWrapper.init())
-
-                // Step 4 — initialize ObjectBox store
+                // Step 1 — initialize ObjectBox store FIRST (nothing should write before this)
                 new java.io.File(STORE_DIR).mkdirs();
                 JarvisStore.init(STORE_DIR);
+
+                // TODO: Step 2 — initialize Cactus (CactusWrapper.init())
+
+                // Step 3 — start file observers (store is ready to receive tasks)
+                startFileObservers();
+
+                // Step 4 — schedule background indexing worker
+                RagIndexWorker.schedule(mContext);
+
+                // Step 5 — start tool scanner (picks up already-installed apps + listens for new ones)
+                mToolScanner = new ToolScannerService(mContext);
+                mToolScanner.start();
 
                 mIsReady = true;
                 Log.i(TAG, "RAG service initialized successfully");
