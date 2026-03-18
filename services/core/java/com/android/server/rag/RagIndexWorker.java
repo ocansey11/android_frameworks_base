@@ -11,7 +11,6 @@ import androidx.work.WorkManager;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-import java.io.File;
 import java.io.FileInputStream;
 import java.security.MessageDigest;
 import java.util.List;
@@ -47,16 +46,8 @@ public class RagIndexWorker extends Worker {
     private static final String WORK_NAME = "jarvis_index_worker";
     private static final int    BATCH_SIZE = 10;
 
-    // Shared Cactus handles — initialized lazily on first use.
-    // In a real build these would be managed by RagService and passed in,
-    // but for Phase 2 we initialize them locally here.
-    private static volatile long sModelHandle = 0L;
-    private static volatile long sIndexHandle = 0L;
-    private static final Object sHandleLock  = new Object();
-
-    private static final String MODEL_PATH = "/data/system/jarvis/models/embed.gguf";
-    private static final String INDEX_DIR  = "/data/system/jarvis/cactus_index";
-    private static final int    EMBED_DIM  = 1024; // Qwen embed dimension
+    // Model name in ModelRegistry — RAG document index
+    private static final String MODEL_NAME = "rag";
 
     public RagIndexWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
@@ -75,8 +66,6 @@ public class RagIndexWorker extends Worker {
             Log.w(TAG, "ObjectBox store not ready — retrying later");
             return Result.retry();
         }
-
-        ensureHandles();
 
         List<JarvisFileObserver.IndexTask> batch =
                 IndexQueue.getInstance().drainBatch(BATCH_SIZE);
@@ -175,7 +164,18 @@ public class RagIndexWorker extends Worker {
                 continue;
             }
 
-            float[] embedding = CactusWrapper.embed(sModelHandle, chunk.getText());
+            ModelRegistry.ModelEntry model = ModelRegistry.getInstance().getReady(MODEL_NAME);
+            if (model == null) {
+                Log.w(TAG, "RAG model not ready — storing chunk without embedding");
+                DocumentChunk entity = new DocumentChunk(
+                        chunk.getPosition(), truncate(chunk.getText(), 200),
+                        chunk.estimateTokenCount(), System.currentTimeMillis());
+                entity.sourceFile.setTarget(existing);
+                chunkBox.put(entity);
+                continue;
+            }
+
+            float[] embedding = CactusWrapper.embed(model.modelHandle, chunk.getText());
             if (embedding == null) {
                 Log.w(TAG, "Embed failed for chunk " + chunk.getPosition()
                         + " of " + task.filePath);
@@ -184,7 +184,7 @@ public class RagIndexWorker extends Worker {
 
             int cactusId = (int) (existing.id * 10000 + chunk.getPosition());
             int addResult = CactusWrapper.indexAdd(
-                    sIndexHandle, cactusId, chunk.getText(), null, embedding);
+                    model.indexHandle, cactusId, chunk.getText(), null, embedding);
 
             if (addResult != 0) {
                 Log.w(TAG, "indexAdd failed for chunk " + chunk.getPosition());
@@ -231,14 +231,15 @@ public class RagIndexWorker extends Worker {
         }
 
         // Delete embeddings from Cactus index
-        if (sIndexHandle != 0L) {
+        ModelRegistry.ModelEntry model = ModelRegistry.getInstance().getReady(MODEL_NAME);
+        if (model != null) {
             List<DocumentChunk> chunks = sf.chunks.getAll();
             int[] ids = new int[chunks.size()];
             for (int i = 0; i < chunks.size(); i++) {
                 ids[i] = chunks.get(i).cactusIndexId;
             }
             if (ids.length > 0) {
-                CactusWrapper.indexDelete(sIndexHandle, ids);
+                CactusWrapper.indexDelete(model.indexHandle, ids);
             }
             // Delete DocumentChunk entities
             for (DocumentChunk c : chunks) {
@@ -248,29 +249,6 @@ public class RagIndexWorker extends Worker {
 
         fileBox.remove(sf.id);
         Log.i(TAG, "Removed: " + task.filePath);
-    }
-
-    // -------------------------------------------------------------------------
-    // Cactus handle management
-    // -------------------------------------------------------------------------
-
-    private static void ensureHandles() {
-        if (sModelHandle != 0L && sIndexHandle != 0L) return;
-        synchronized (sHandleLock) {
-            if (sModelHandle == 0L) {
-                sModelHandle = CactusWrapper.init(MODEL_PATH, null, true);
-                if (sModelHandle == 0L) {
-                    Log.w(TAG, "Cactus model not ready — indexing will skip embeddings");
-                }
-            }
-            if (sIndexHandle == 0L && sModelHandle != 0L) {
-                new File(INDEX_DIR).mkdirs();
-                sIndexHandle = CactusWrapper.indexInit(INDEX_DIR, EMBED_DIM);
-                if (sIndexHandle == 0L) {
-                    Log.w(TAG, "Cactus index not ready — indexing will skip embeddings");
-                }
-            }
-        }
     }
 
     // -------------------------------------------------------------------------

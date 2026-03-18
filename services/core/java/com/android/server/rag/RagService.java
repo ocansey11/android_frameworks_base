@@ -33,6 +33,12 @@ public class RagService extends SystemService {
     // ObjectBox store directory — inside system data partition
     private static final String STORE_DIR = "/data/system/jarvis/objectbox";
 
+    // Model paths and index directories
+    private static final String MODEL_PATH      = "/data/system/jarvis/models/embed.gguf";
+    private static final String INDEX_DIR_RAG   = "/data/system/jarvis/index_rag";
+    private static final String INDEX_DIR_TOOLS = "/data/system/jarvis/index_tools";
+    private static final int    EMBED_DIM       = 1024; // Qwen embed dimension
+
     // Directories to watch — expandable
     // Each path is watched recursively (JarvisFileObserver walks subdirectories)
     private static final String[] WATCH_PATHS = {
@@ -68,7 +74,22 @@ public class RagService extends SystemService {
                 new java.io.File(STORE_DIR).mkdirs();
                 JarvisStore.init(STORE_DIR);
 
-                // TODO: Step 2 — initialize Cactus (CactusWrapper.init())
+                // Step 2 — initialize Cactus via ModelRegistry
+                // Two entries: "rag" for document indexing, "tools" for tool semantic search
+                // Same model, separate index directories — indexes must never be mixed
+                ModelRegistry registry = ModelRegistry.getInstance();
+                ModelRegistry.ModelEntry ragModel   = registry.register("rag",   MODEL_PATH, INDEX_DIR_RAG,   EMBED_DIM);
+                ModelRegistry.ModelEntry toolsModel = registry.register("tools", MODEL_PATH, INDEX_DIR_TOOLS, EMBED_DIM);
+
+                if (!ragModel.isReady()) {
+                    Log.w(TAG, "RAG model not ready — indexing will skip embeddings");
+                }
+                if (!toolsModel.isReady()) {
+                    Log.w(TAG, "Tools model not ready — tool embeddings disabled");
+                }
+
+                // Pass tools handles to ToolScannerService so it can embed tool descriptions
+                // (done after scanner is started below)
 
                 // Step 3 — start file observers (store is ready to receive tasks)
                 startFileObservers();
@@ -79,6 +100,12 @@ public class RagService extends SystemService {
                 // Step 5 — start tool scanner (picks up already-installed apps + listens for new ones)
                 mToolScanner = new ToolScannerService(mContext);
                 mToolScanner.start();
+
+                // Pass Cactus handles to tool scanner now that both are ready
+                ModelRegistry.ModelEntry tools = ModelRegistry.getInstance().getReady("tools");
+                if (tools != null) {
+                    mToolScanner.setCactusHandles(tools.modelHandle, tools.indexHandle);
+                }
 
                 mIsReady = true;
                 Log.i(TAG, "RAG service initialized successfully");
@@ -99,6 +126,26 @@ public class RagService extends SystemService {
             mFileObservers[i].startWatching();
             Log.i(TAG, "FileObserver started on: " + WATCH_PATHS[i]);
         }
+    }
+
+    @Override
+    public void onBootPhase(int phase) {
+        if (phase == SystemService.PHASE_BOOT_COMPLETED) {
+            Log.i(TAG, "Boot complete");
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        Log.i(TAG, "RagService shutting down");
+        if (mToolScanner != null) mToolScanner.stop();
+        if (mFileObservers != null) {
+            for (JarvisFileObserver o : mFileObservers) {
+                if (o != null) o.stopWatching();
+            }
+        }
+        ModelRegistry.getInstance().destroyAll();
+        JarvisStore.close();
     }
 
     private final IRagService.Stub mBinder = new IRagService.Stub() {
