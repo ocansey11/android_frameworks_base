@@ -1,4 +1,4 @@
-package com.android.server.rag;
+package com.android.server.rag.model;
 
 /**
  * A single chunk of text extracted from a SourceFile.

@@ -1,9 +1,11 @@
-package android.app.rag;
+package com.android.server.rag.core;
 
 import android.content.Context;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.util.Log;
+
+import android.app.rag.IRagService;
 
 /**
  * Public API for the JarvisOS RAG Service.

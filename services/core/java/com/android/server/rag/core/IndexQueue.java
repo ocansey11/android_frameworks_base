@@ -1,6 +1,8 @@
-package com.android.server.rag;
+package com.android.server.rag.core;
 
 import android.util.Log;
+
+import com.android.server.rag.indexing.JarvisFileObserver;
 
 import java.util.ArrayList;
 import java.util.List;

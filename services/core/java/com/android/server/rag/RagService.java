@@ -7,6 +7,15 @@ import android.app.rag.IRagService;
 import android.util.Log;
 
 import com.android.server.SystemService;
+import com.android.server.rag.core.IndexQueue;
+import com.android.server.rag.core.JarvisStore;
+import com.android.server.rag.core.ModelRegistry;
+import com.android.server.rag.indexing.JarvisFileObserver;
+import com.android.server.rag.indexing.RagIndexWorker;
+import com.android.server.rag.inference.CactusWrapper;
+import com.android.server.rag.model.DocumentChunk;
+import com.android.server.rag.model.SourceFile;
+import com.android.server.rag.tools.ToolScannerService;
 
 import java.util.List;
 

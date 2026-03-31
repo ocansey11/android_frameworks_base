@@ -1,4 +1,4 @@
-package com.android.server.rag;
+package com.android.server.rag.inference;
 
 import android.util.Log;
 

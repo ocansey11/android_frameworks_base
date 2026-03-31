@@ -1,7 +1,15 @@
-package com.android.server.rag;
+package com.android.server.rag.indexing;
 
 import android.content.Context;
 import android.util.Log;
+
+import com.android.server.rag.core.IndexQueue;
+import com.android.server.rag.core.JarvisStore;
+import com.android.server.rag.core.ModelRegistry;
+import com.android.server.rag.inference.CactusWrapper;
+import com.android.server.rag.model.Chunk;
+import com.android.server.rag.model.DocumentChunk;
+import com.android.server.rag.model.SourceFile;
 
 import androidx.annotation.NonNull;
 import androidx.work.Constraints;

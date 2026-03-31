@@ -1,6 +1,8 @@
-package com.android.server.rag;
+package com.android.server.rag.indexing;
 
 import android.util.Log;
+
+import com.android.server.rag.model.Chunk;
 
 import java.io.BufferedReader;
 import java.io.FileReader;

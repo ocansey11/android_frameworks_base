@@ -2,7 +2,13 @@
 java_library {
     name: "services.rag",
     srcs: [
-        "**/*.java",
+        "*.java",
+        "core/*.java",
+        "inference/*.java",
+        "indexing/*.java",
+        "search/*.java",
+        "tools/*.java",
+        "model/*.java",
     ],
     static_libs: [
         "objectbox-android",

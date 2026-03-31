@@ -1,4 +1,4 @@
-package android.app.rag;
+package com.android.server.rag.core;
 
 /**
  * Exception thrown when RAG operations fail

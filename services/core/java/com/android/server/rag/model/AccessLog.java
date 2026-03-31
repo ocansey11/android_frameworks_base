@@ -1,4 +1,4 @@
-package com.android.server.rag;
+package com.android.server.rag.model;
 
 import io.objectbox.annotation.Entity;
 import io.objectbox.annotation.Id;
