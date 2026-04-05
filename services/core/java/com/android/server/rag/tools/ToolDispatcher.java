@@ -344,6 +344,68 @@ public class ToolDispatcher {
     }
 
     // -------------------------------------------------------------------------
+    // Public search API (used by IToolRegistry)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Search for tools matching the query without dispatching.
+     * Returns a JSON array string (never null; returns "[]" on empty/failure).
+     */
+    public String searchTools(String query) {
+        if (query == null || query.trim().isEmpty()) return "[]";
+        List<ToolRecord> results = semanticSearch(query);
+        return serializeTools(results);
+    }
+
+    /**
+     * Serialize a single ToolRecord to a JSONObject.
+     * Returns null if tool is null or serialization fails.
+     */
+    public static JSONObject serializeToolObject(ToolRecord tool) {
+        if (tool == null) return null;
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put("id",            tool.id);
+            obj.put("toolName",      tool.toolName != null ? tool.toolName : "");
+            obj.put("description",   tool.description != null ? tool.description : "");
+            obj.put("paramsJson",    tool.paramsJson != null ? tool.paramsJson : "");
+            obj.put("rawDefinition", tool.rawDefinition != null ? tool.rawDefinition : "");
+            obj.put("receiverClass", tool.receiverClass != null ? tool.receiverClass : "");
+            obj.put("cactusIndexId", tool.cactusIndexId);
+
+            AppRecord app = tool.app.getTarget();
+            if (app != null) {
+                JSONObject appObj = new JSONObject();
+                appObj.put("id",          app.id);
+                appObj.put("packageName", app.packageName != null ? app.packageName : "");
+                appObj.put("appLabel",    app.appLabel != null ? app.appLabel : "");
+                appObj.put("sourceType",  app.sourceType != null ? app.sourceType : "");
+                obj.put("app", appObj);
+            }
+            return obj;
+        } catch (JSONException e) {
+            Log.e(TAG, "serializeToolObject failed for: " + tool.toolName, e);
+            return null;
+        }
+    }
+
+    /** Serialize a single ToolRecord to a JSON string, or null on failure. */
+    public static String serializeTool(ToolRecord tool) {
+        JSONObject obj = serializeToolObject(tool);
+        return obj != null ? obj.toString() : null;
+    }
+
+    /** Serialize a list of ToolRecords to a JSON array string. */
+    public static String serializeTools(List<ToolRecord> tools) {
+        JSONArray arr = new JSONArray();
+        for (ToolRecord t : tools) {
+            JSONObject obj = serializeToolObject(t);
+            if (obj != null) arr.put(obj);
+        }
+        return arr.toString();
+    }
+
+    // -------------------------------------------------------------------------
     // Internal data class
     // -------------------------------------------------------------------------
 
