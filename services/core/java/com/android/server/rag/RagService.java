@@ -14,7 +14,6 @@ import com.android.server.rag.core.ModelRegistry;
 import com.android.server.rag.indexing.JarvisFileObserver;
 import com.android.server.rag.indexing.RagIndexWorker;
 import com.android.server.rag.model.SourceFile;
-import com.android.server.rag.tools.AppRecord;
 import com.android.server.rag.tools.ToolDispatcher;
 import com.android.server.rag.tools.ToolRecord;
 import com.android.server.rag.tools.ToolScannerService;

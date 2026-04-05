@@ -6,14 +6,24 @@ package android.rag;
  * Published as service name "jarvis_tools" from RagService.
  * Apps use this to inspect what tools are registered on the device.
  *
- * All return values are JSON strings. Null = not found / store not ready.
+ * Return value contract:
+ *   - listTools() / searchTools() return "[]" when store is not ready or no results.
+ *   - getTool(id) returns null when not found or store is not ready.
+ *   - All other failures return "[]" (list methods) or null (single-item methods).
+ *
+ * Note: listTools() returns the full registry in one Binder call. This is fine
+ * for small registries but risks TransactionTooLargeException at scale.
+ * Pagination (offset/limit) will be added in a future phase.
  */
 interface IToolRegistry {
 
     /**
-     * Returns a JSON array of all registered tools.
-     * Each element is a tool object: {id, toolName, description, paramsJson,
-     * receiverClass, cactusIndexId, app:{packageName, appLabel, sourceType}}
+     * Returns a JSON array of all registered tools, or "[]" if none / not ready.
+     * Each element is a tool object:
+     * {id, toolName, description, paramsJson, rawDefinition, receiverClass,
+     * cactusIndexId, app:{id, packageName, appLabel, sourceType}}
+     *
+     * Note: paramsJson is itself a JSON-encoded string, not an embedded JSON object.
      */
     String listTools();
 

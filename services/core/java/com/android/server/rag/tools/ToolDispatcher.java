@@ -349,7 +349,7 @@ public class ToolDispatcher {
 
     /**
      * Search for tools matching the query without dispatching.
-     * Returns up to TOP_K results as a JSON array string, or null on failure.
+     * Returns a JSON array string (never null; returns "[]" on empty/failure).
      */
     public String searchTools(String query) {
         if (query == null || query.trim().isEmpty()) return "[]";
@@ -357,8 +357,11 @@ public class ToolDispatcher {
         return serializeTools(results);
     }
 
-    /** Serialize a single ToolRecord to a JSON object string. */
-    public static String serializeTool(ToolRecord tool) {
+    /**
+     * Serialize a single ToolRecord to a JSONObject.
+     * Returns null if tool is null or serialization fails.
+     */
+    public static JSONObject serializeToolObject(ToolRecord tool) {
         if (tool == null) return null;
         try {
             JSONObject obj = new JSONObject();
@@ -379,21 +382,25 @@ public class ToolDispatcher {
                 appObj.put("sourceType",  app.sourceType != null ? app.sourceType : "");
                 obj.put("app", appObj);
             }
-            return obj.toString();
+            return obj;
         } catch (JSONException e) {
-            Log.e(TAG, "serializeTool failed for: " + tool.toolName, e);
+            Log.e(TAG, "serializeToolObject failed for: " + tool.toolName, e);
             return null;
         }
+    }
+
+    /** Serialize a single ToolRecord to a JSON string, or null on failure. */
+    public static String serializeTool(ToolRecord tool) {
+        JSONObject obj = serializeToolObject(tool);
+        return obj != null ? obj.toString() : null;
     }
 
     /** Serialize a list of ToolRecords to a JSON array string. */
     public static String serializeTools(List<ToolRecord> tools) {
         JSONArray arr = new JSONArray();
         for (ToolRecord t : tools) {
-            String json = serializeTool(t);
-            if (json != null) {
-                try { arr.put(new JSONObject(json)); } catch (JSONException ignored) {}
-            }
+            JSONObject obj = serializeToolObject(t);
+            if (obj != null) arr.put(obj);
         }
         return arr.toString();
     }
