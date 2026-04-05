@@ -4,6 +4,7 @@ import android.content.Context;
 import android.os.Binder;
 import android.os.Environment;
 import android.app.rag.IRagService;
+import android.rag.IToolRegistry;
 import android.util.Log;
 
 import com.android.server.SystemService;
@@ -13,7 +14,9 @@ import com.android.server.rag.core.ModelRegistry;
 import com.android.server.rag.indexing.JarvisFileObserver;
 import com.android.server.rag.indexing.RagIndexWorker;
 import com.android.server.rag.model.SourceFile;
+import com.android.server.rag.tools.AppRecord;
 import com.android.server.rag.tools.ToolDispatcher;
+import com.android.server.rag.tools.ToolRecord;
 import com.android.server.rag.tools.ToolScannerService;
 
 /**
@@ -59,6 +62,7 @@ public class RagService extends SystemService {
     @Override
     public void onStart() {
         publishBinderService("rag", mBinder);
+        publishBinderService("jarvis_tools", mToolRegistryBinder);
         initializeAsync();
     }
 
@@ -201,6 +205,58 @@ public class RagService extends SystemService {
         private void enforceCallingPermission() {
             final int callingUid = Binder.getCallingUid();
             Log.d(TAG, "Called by UID: " + callingUid);
+            // TODO: mContext.enforceCallingPermission("android.permission.ACCESS_RAG_SERVICE", "...");
+        }
+    };
+
+    // -------------------------------------------------------------------------
+    // IToolRegistry Binder — published as "jarvis_tools"
+    // -------------------------------------------------------------------------
+
+    private final IToolRegistry.Stub mToolRegistryBinder = new IToolRegistry.Stub() {
+
+        @Override
+        public String listTools() {
+            enforceCallingPermission();
+            if (!JarvisStore.isReady()) return "[]";
+            try {
+                java.util.List<ToolRecord> all = JarvisStore.box(ToolRecord.class).getAll();
+                return ToolDispatcher.serializeTools(all);
+            } catch (Exception e) {
+                Log.e(TAG, "listTools() failed", e);
+                return "[]";
+            }
+        }
+
+        @Override
+        public String getTool(long id) {
+            enforceCallingPermission();
+            if (!JarvisStore.isReady()) return null;
+            try {
+                ToolRecord tool = JarvisStore.box(ToolRecord.class).get(id);
+                return ToolDispatcher.serializeTool(tool);
+            } catch (Exception e) {
+                Log.e(TAG, "getTool() failed for id=" + id, e);
+                return null;
+            }
+        }
+
+        @Override
+        public String searchTools(String query) {
+            enforceCallingPermission();
+            if (query == null || query.trim().isEmpty()) return "[]";
+            if (!mIsReady || mToolDispatcher == null) return "[]";
+            try {
+                return mToolDispatcher.searchTools(query);
+            } catch (Exception e) {
+                Log.e(TAG, "searchTools() failed", e);
+                return "[]";
+            }
+        }
+
+        private void enforceCallingPermission() {
+            final int callingUid = Binder.getCallingUid();
+            Log.d(TAG, "jarvis_tools called by UID: " + callingUid);
             // TODO: mContext.enforceCallingPermission("android.permission.ACCESS_RAG_SERVICE", "...");
         }
     };
