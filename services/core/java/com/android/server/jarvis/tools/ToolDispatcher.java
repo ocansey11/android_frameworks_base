@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * ToolDispatcher — resolves and executes the best tool for a given query.
  *
- * Called from RagService.processQuery() after RAG retrieval when the model
+ * Called from JarvisService.processQuery() after RAG retrieval when the model
  * signals a tool call is needed. Phase 5 (JarvisExecutor) will call this
  * directly as the ToolNode.
  *

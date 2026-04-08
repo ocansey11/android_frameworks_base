@@ -13,7 +13,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  * Singleton queue that holds pending file index tasks.
  *
  * JarvisFileObserver pushes tasks in.
- * RagIndexWorker drains tasks out (10 at a time).
+ * JarvisIndexWorker drains tasks out (10 at a time).
  *
  * Thread-safe — LinkedBlockingQueue handles concurrent access.
  */
@@ -49,7 +49,7 @@ public class IndexQueue {
 
     /**
      * Drain up to batchSize tasks from the queue.
-     * Called by RagIndexWorker on each run.
+     * Called by JarvisIndexWorker on each run.
      */
     public List<JarvisFileObserver.IndexTask> drainBatch(int batchSize) {
         List<JarvisFileObserver.IndexTask> batch = new ArrayList<>(batchSize);

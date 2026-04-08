@@ -3,7 +3,7 @@ package com.android.server.jarvis;
 import android.content.Context;
 import android.os.Binder;
 import android.os.Environment;
-import android.jarvis.IRagService;
+import android.jarvis.IJarvisService;
 import android.jarvis.IToolRegistry;
 import android.util.Log;
 
@@ -12,28 +12,38 @@ import com.android.server.jarvis.core.IndexQueue;
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
 import com.android.server.jarvis.indexing.JarvisFileObserver;
-import com.android.server.jarvis.indexing.RagIndexWorker;
+import com.android.server.jarvis.indexing.JarvisIndexWorker;
 import com.android.server.jarvis.model.SourceFile;
+import com.android.server.jarvis.model.SourceFile_;
 import com.android.server.jarvis.tools.ToolDispatcher;
 import com.android.server.jarvis.tools.ToolRecord;
 import com.android.server.jarvis.tools.ToolScannerService;
 
 /**
- * JarvisOS RAG System Service.
+ * JarvisOS System Service.
+ *
+ * The single privileged service that owns all Jarvis capabilities:
+ *   - RAG: document indexing, semantic retrieval, LLM completion
+ *   - Tools: app tool registry, semantic tool routing, broadcast dispatch
+ *   - (Phase 5) Agentic loop via JarvisExecutor
  *
  * Startup sequence:
  *   1. ObjectBox store
  *   2. ModelRegistry — "rag" + "tools" handle pairs
  *   3. FileObservers
- *   4. RagIndexWorker (WorkManager)
+ *   4. JarvisIndexWorker (WorkManager)
  *   5. ToolScannerService + ToolDispatcher
  *
  * Query flow:
  *   processQuery() → ToolDispatcher (tool path) | RAG pipeline (knowledge path)
+ *
+ * Published Binder endpoints:
+ *   "jarvis"       → IJarvisService (queries, indexing)
+ *   "jarvis_tools" → IToolRegistry  (tool registry inspection)
  */
-public class RagService extends SystemService {
+public class JarvisService extends SystemService {
 
-    private static final String TAG = "RagService";
+    private static final String TAG = "JarvisService";
 
     private static final String STORE_DIR       = "/data/system/jarvis/objectbox";
     private static final String MODEL_PATH      = "/data/system/jarvis/models/embed.gguf";
@@ -53,14 +63,14 @@ public class RagService extends SystemService {
     private ToolScannerService mToolScanner;
     private ToolDispatcher mToolDispatcher;
 
-    public RagService(Context context) {
+    public JarvisService(Context context) {
         super(context);
         mContext = context;
     }
 
     @Override
     public void onStart() {
-        publishBinderService("rag", mBinder);
+        publishBinderService("jarvis", mBinder);
         publishBinderService("jarvis_tools", mToolRegistryBinder);
         initializeAsync();
     }
@@ -84,10 +94,10 @@ public class RagService extends SystemService {
                 startFileObservers();
 
                 // Step 4 — background indexing
-                RagIndexWorker.schedule(mContext);
+                JarvisIndexWorker.schedule(mContext);
 
                 // Step 5 — Tool Registry
-                mToolScanner   = new ToolScannerService(mContext);
+                mToolScanner    = new ToolScannerService(mContext);
                 mToolDispatcher = new ToolDispatcher(mContext);
                 mToolScanner.start();
 
@@ -97,12 +107,12 @@ public class RagService extends SystemService {
                 }
 
                 mIsReady = true;
-                Log.i(TAG, "RagService initialized");
+                Log.i(TAG, "JarvisService initialized");
 
             } catch (Exception e) {
-                Log.e(TAG, "RagService init failed", e);
+                Log.e(TAG, "JarvisService init failed", e);
             }
-        }, "RagServiceInit").start();
+        }, "JarvisServiceInit").start();
     }
 
     private void startFileObservers() {
@@ -132,10 +142,10 @@ public class RagService extends SystemService {
     }
 
     // -------------------------------------------------------------------------
-    // Binder implementation
+    // IJarvisService Binder — published as "jarvis"
     // -------------------------------------------------------------------------
 
-    private final IRagService.Stub mBinder = new IRagService.Stub() {
+    private final IJarvisService.Stub mBinder = new IJarvisService.Stub() {
 
         @Override
         public String processQuery(String query) {
@@ -144,7 +154,7 @@ public class RagService extends SystemService {
                 throw new IllegalArgumentException("Query cannot be null or empty");
             }
             if (!mIsReady) {
-                return "Error: RAG service is still initializing. Please try again.";
+                return "Error: Jarvis service is still initializing. Please try again.";
             }
 
             Log.i(TAG, "processQuery: " + query.substring(0, Math.min(50, query.length())));
@@ -158,7 +168,7 @@ public class RagService extends SystemService {
                 }
 
                 // RAG path — TODO: wire MetadataSearch + CactusWrapper.complete()
-                return "RAG Service received: \"" + query + "\"\n\nTODO: Implement RAG pipeline";
+                return "Jarvis received: \"" + query + "\"\n\nTODO: Implement RAG pipeline";
 
             } catch (Exception e) {
                 Log.e(TAG, "processQuery failed", e);
@@ -204,7 +214,7 @@ public class RagService extends SystemService {
         private void enforceCallingPermission() {
             final int callingUid = Binder.getCallingUid();
             Log.d(TAG, "Called by UID: " + callingUid);
-            // TODO: mContext.enforceCallingPermission("android.permission.ACCESS_RAG_SERVICE", "...");
+            // TODO: mContext.enforceCallingPermission("android.permission.ACCESS_JARVIS_SERVICE", "...");
         }
     };
 
@@ -256,7 +266,7 @@ public class RagService extends SystemService {
         private void enforceCallingPermission() {
             final int callingUid = Binder.getCallingUid();
             Log.d(TAG, "jarvis_tools called by UID: " + callingUid);
-            // TODO: mContext.enforceCallingPermission("android.permission.ACCESS_RAG_SERVICE", "...");
+            // TODO: mContext.enforceCallingPermission("android.permission.ACCESS_JARVIS_SERVICE", "...");
         }
     };
 }

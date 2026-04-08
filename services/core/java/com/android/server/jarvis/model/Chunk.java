@@ -3,7 +3,7 @@ package com.android.server.jarvis.model;
 /**
  * A single chunk of text extracted from a SourceFile.
  *
- * Passed between ChunkingStrategy → RagIndexWorker → CactusWrapper.
+ * Passed between ChunkingStrategy → JarvisIndexWorker → CactusWrapper.
  * Never persisted directly — DocumentChunk is the ObjectBox entity.
  */
 public class Chunk {

@@ -22,7 +22,7 @@ import org.json.JSONObject;
  *
  * Threading:
  *   All native calls are blocking. Callers must run on a background thread.
- *   RagService.initializeAsync() and RagIndexWorker.doWork() already do this.
+ *   JarvisService.initializeAsync() and JarvisIndexWorker.doWork() already do this.
  *
  * Model handle:
  *   cactus_model_t is a void* in C++. We store it as a long in Java.

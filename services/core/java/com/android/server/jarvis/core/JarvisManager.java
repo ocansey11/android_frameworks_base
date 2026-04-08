@@ -5,33 +5,26 @@ import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.util.Log;
 
-import android.app.rag.IRagService;
+import android.jarvis.IJarvisService;
 
 /**
- * Public API for the JarvisOS RAG Service.
+ * Internal API manager for JarvisOS.
  *
- * Apps obtain an instance via:
- *   RagManager rm = (RagManager) context.getSystemService("rag");
+ * Used inside system_server to call back into JarvisService via Binder.
+ * Apps use the public android.jarvis.JarvisManager instead.
  *
- * This class hides Binder IPC complexity and provides a clean interface.
- * All calls are synchronous — run them on a background thread.
- *
- * Example:
- *   RagManager rm = (RagManager) context.getSystemService("rag");
- *   if (rm != null && rm.isReady()) {
- *       String answer = rm.query("What did I work on yesterday?");
- *   }
+ * All calls are synchronous — run on a background thread.
  */
-public class RagManager {
+public class JarvisManager {
 
-    private static final String TAG          = "RagManager";
-    private static final String SERVICE_NAME = "rag";
+    private static final String TAG          = "JarvisManager";
+    private static final String SERVICE_NAME = "jarvis";
 
     private final Context mContext;
-    private IRagService   mService;
+    private IJarvisService mService;
 
-    /** @hide — instantiated by SystemServiceRegistry, not by apps directly. */
-    public RagManager(Context context) {
+    /** @hide — instantiated internally, not by apps directly. */
+    public JarvisManager(Context context) {
         mContext = context;
     }
 
@@ -40,21 +33,19 @@ public class RagManager {
     // -------------------------------------------------------------------------
 
     /**
-     * Submit a natural language query to the RAG pipeline.
-     *
-     * Internally: Stage 1 metadata search → Stage 2 semantic re-rank → LLM completion.
+     * Submit a natural language query to Jarvis.
      *
      * @param query the user's question
-     * @return LLM response with retrieved context injected
-     * @throws RagException if the service is unavailable or the query fails
+     * @return response string (from tool or RAG)
+     * @throws JarvisException if the service is unavailable or the query fails
      */
-    public String query(String query) throws RagException {
+    public String query(String query) throws JarvisException {
         validateNotEmpty(query, "query");
         try {
             return requireService().processQuery(query);
         } catch (RemoteException e) {
             Log.e(TAG, "query() failed", e);
-            throw new RagException("Failed to communicate with RAG service", e);
+            throw new JarvisException("Failed to communicate with Jarvis service", e);
         }
     }
 
@@ -65,19 +56,16 @@ public class RagManager {
     /**
      * Request immediate indexing of a file.
      *
-     * The file is pushed to IndexQueue and processed by the next
-     * RagIndexWorker run (charging constraint, 15-min interval).
-     *
      * @param path absolute path to the file
-     * @throws RagException if the service is unavailable
+     * @throws JarvisException if the service is unavailable
      */
-    public void indexDocument(String path) throws RagException {
+    public void indexDocument(String path) throws JarvisException {
         validateNotEmpty(path, "path");
         try {
             requireService().indexDocument(path);
         } catch (RemoteException e) {
             Log.e(TAG, "indexDocument() failed", e);
-            throw new RagException("Failed to index document", e);
+            throw new JarvisException("Failed to index document", e);
         }
     }
 
@@ -86,15 +74,15 @@ public class RagManager {
      *
      * @param path absolute path to the file
      * @return true if the file is in ObjectBox with isIndexed = true
-     * @throws RagException if the service is unavailable
+     * @throws JarvisException if the service is unavailable
      */
-    public boolean isIndexed(String path) throws RagException {
+    public boolean isIndexed(String path) throws JarvisException {
         validateNotEmpty(path, "path");
         try {
             return requireService().isIndexed(path);
         } catch (RemoteException e) {
             Log.e(TAG, "isIndexed() failed", e);
-            throw new RagException("Failed to check index status", e);
+            throw new JarvisException("Failed to check index status", e);
         }
     }
 
@@ -103,12 +91,11 @@ public class RagManager {
     // -------------------------------------------------------------------------
 
     /**
-     * Returns true if RagService has finished initialization.
-     * Safe to call from any thread — returns false if service is unreachable.
+     * Returns true if JarvisService has finished initialization.
      */
     public boolean isReady() {
         try {
-            IRagService svc = getService();
+            IJarvisService svc = getService();
             return svc != null && svc.isReady();
         } catch (RemoteException e) {
             Log.w(TAG, "isReady() RemoteException", e);
@@ -120,23 +107,18 @@ public class RagManager {
     // Private helpers
     // -------------------------------------------------------------------------
 
-    /** Get or lazily connect to the Binder service. */
-    private IRagService getService() {
+    private IJarvisService getService() {
         if (mService == null) {
-            mService = IRagService.Stub.asInterface(
+            mService = IJarvisService.Stub.asInterface(
                     ServiceManager.getService(SERVICE_NAME));
         }
         return mService;
     }
 
-    /**
-     * Same as getService() but throws RagException if service is null.
-     * Use this in all public methods that require the service to be present.
-     */
-    private IRagService requireService() throws RagException {
-        IRagService svc = getService();
+    private IJarvisService requireService() throws JarvisException {
+        IJarvisService svc = getService();
         if (svc == null) {
-            throw new RagException("RAG service not available — is JarvisOS running?");
+            throw new JarvisException("Jarvis service not available — is JarvisOS running?");
         }
         return svc;
     }

@@ -19,7 +19,7 @@ import java.nio.charset.StandardCharsets;
  *   .docx — TODO: requires Apache POI or similar
  *
  * Returns null if the file type is unsupported or extraction fails.
- * Caller (RagIndexWorker) should skip null results gracefully.
+ * Caller (JarvisIndexWorker) should skip null results gracefully.
  */
 public class TextExtractor {
 

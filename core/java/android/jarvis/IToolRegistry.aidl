@@ -3,7 +3,7 @@ package android.jarvis;
 /**
  * Public Binder interface for the JarvisOS Tool Registry.
  *
- * Published as service name "jarvis_tools" from RagService.
+ * Published as service name "jarvis_tools" from JarvisService.
  * Apps use this to inspect what tools are registered on the device.
  *
  * Return value contract:

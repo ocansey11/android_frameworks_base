@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * ModelRegistry — manages all active Cactus (modelHandle, indexHandle) pairs.
  *
  * Phase 3 prerequisite: replaces the static sModelHandle / sIndexHandle fields
- * that were hardcoded in RagIndexWorker. Adding a new model is now a single
+ * that were hardcoded in JarvisIndexWorker. Adding a new model is now a single
  * register() call — no code changes elsewhere.
  *
  * Each model entry tracks:
@@ -162,7 +162,7 @@ public class ModelRegistry {
 
     /**
      * Destroy all registered models and indexes.
-     * Called on RagService shutdown.
+     * Called on JarvisService shutdown.
      */
     public void destroyAll() {
         for (ModelEntry entry : mEntries.values()) {

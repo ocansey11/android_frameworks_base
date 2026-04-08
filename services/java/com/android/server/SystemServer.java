@@ -1681,15 +1681,15 @@ public final class SystemServer implements Dumpable {
             t.traceEnd();
 
 
-            // Start RAG Service
-            t.traceBegin("StartRagService");
+            // Start Jarvis Service
+            t.traceBegin("StartJarvisService");
             try {
-                Slog.i(TAG, "RAG Service");
+                Slog.i(TAG, "Jarvis Service");
                 mSystemServiceManager.startService(
-                    "com.android.server.rag.RagService"
+                    "com.android.server.jarvis.JarvisService"
                 );
             } catch (Throwable e) {
-                reportWtf("starting RAG Service", e);
+                reportWtf("starting Jarvis Service", e);
             }
             t.traceEnd();
 

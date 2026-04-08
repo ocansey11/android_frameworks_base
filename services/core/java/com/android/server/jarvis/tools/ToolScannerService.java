@@ -85,7 +85,7 @@ public class ToolScannerService {
         }
     }
 
-    /** Called by RagService once Cactus is initialized. Enables embedding. */
+    /** Called by JarvisService once Cactus is initialized. Enables embedding. */
     public void setCactusHandles(long modelHandle, long indexHandle) {
         this.mModelHandle = modelHandle;
         this.mIndexHandle = indexHandle;

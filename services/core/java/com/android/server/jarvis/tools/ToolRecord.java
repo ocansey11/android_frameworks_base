@@ -17,7 +17,7 @@ import io.objectbox.relation.ToOne;
  *
  * Key constraint:
  *   The model that embedded rawDefinition must be the model that queries it.
- *   Enforced by the "tools" ModelRegistry entry in RagService.
+ *   Enforced by the "tools" ModelRegistry entry in JarvisService.
  *
  * See TOOL_REGISTRY.md for full design.
  */

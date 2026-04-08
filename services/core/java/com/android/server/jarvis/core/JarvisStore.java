@@ -8,14 +8,14 @@ import io.objectbox.BoxStore;
 /**
  * JarvisStore — ObjectBox store singleton.
  *
- * Initializes once at RagService startup. All other classes
- * (MetadataSearch, RagIndexWorker) call JarvisStore.get() to
+ * Initializes once at JarvisService startup. All other classes
+ * (MetadataSearch, JarvisIndexWorker) call JarvisStore.get() to
  * retrieve boxes.
  *
  * Store lives at: /data/system/jarvis/objectbox/
  *
  * Usage:
- *   JarvisStore.init(dataDir);          // called once from RagService
+ *   JarvisStore.init(dataDir);          // called once from JarvisService
  *   Box<SourceFile> box = JarvisStore.get().boxFor(SourceFile.class);
  */
 public class JarvisStore {
@@ -23,7 +23,7 @@ public class JarvisStore {
     private static final String TAG = "JarvisStore";
     private static volatile BoxStore sStore;
 
-    /** Initialize the ObjectBox store. Call once from RagService.initializeAsync(). */
+    /** Initialize the ObjectBox store. Call once from JarvisService.initializeAsync(). */
     public static void init(String dataDir) {
         if (sStore != null) {
             Log.w(TAG, "Store already initialized — skipping");

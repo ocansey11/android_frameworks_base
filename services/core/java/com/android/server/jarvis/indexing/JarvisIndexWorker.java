@@ -10,6 +10,7 @@ import com.android.server.jarvis.inference.CactusWrapper;
 import com.android.server.jarvis.model.Chunk;
 import com.android.server.jarvis.model.DocumentChunk;
 import com.android.server.jarvis.model.SourceFile;
+import com.android.server.jarvis.model.SourceFile_;
 
 import androidx.annotation.NonNull;
 import androidx.work.Constraints;
@@ -48,16 +49,16 @@ import java.util.concurrent.TimeUnit;
  * Note: CactusWrapper calls are blocking — this worker already runs on a
  * background thread (WorkManager's executor), so no extra threading needed.
  */
-public class RagIndexWorker extends Worker {
+public class JarvisIndexWorker extends Worker {
 
-    private static final String TAG       = "RagIndexWorker";
+    private static final String TAG       = "JarvisIndexWorker";
     private static final String WORK_NAME = "jarvis_index_worker";
     private static final int    BATCH_SIZE = 10;
 
     // Model name in ModelRegistry — RAG document index
     private static final String MODEL_NAME = "rag";
 
-    public RagIndexWorker(@NonNull Context context, @NonNull WorkerParameters params) {
+    public JarvisIndexWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
     }
 
@@ -68,7 +69,7 @@ public class RagIndexWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        Log.i(TAG, "RagIndexWorker started");
+        Log.i(TAG, "JarvisIndexWorker started");
 
         if (!JarvisStore.isReady()) {
             Log.w(TAG, "ObjectBox store not ready — retrying later");
@@ -192,7 +193,7 @@ public class RagIndexWorker extends Worker {
                     truncate(chunk.getText(), 200),
                     chunk.estimateTokenCount(),
                     System.currentTimeMillis());
-            entity.cactusIndexId   = cactusId;
+            entity.cactusIndexId     = cactusId;
             entity.embeddingRetained = (addResult == 0);
             entity.sourceFile.setTarget(existing);
             chunkBox.put(entity);
@@ -214,7 +215,7 @@ public class RagIndexWorker extends Worker {
     private void processRemoveTask(JarvisFileObserver.IndexTask task) {
         Log.i(TAG, "Removing from index: " + task.filePath);
 
-        io.objectbox.Box<SourceFile> fileBox  = JarvisStore.box(SourceFile.class);
+        io.objectbox.Box<SourceFile> fileBox     = JarvisStore.box(SourceFile.class);
         io.objectbox.Box<DocumentChunk> chunkBox = JarvisStore.box(DocumentChunk.class);
 
         SourceFile sf = fileBox.query()
@@ -238,7 +239,6 @@ public class RagIndexWorker extends Worker {
             if (ids.length > 0) {
                 CactusWrapper.indexDelete(model.indexHandle, ids);
             }
-            // Delete DocumentChunk entities
             for (DocumentChunk c : chunks) {
                 chunkBox.remove(c.id);
             }
@@ -288,7 +288,7 @@ public class RagIndexWorker extends Worker {
                 .build();
 
         PeriodicWorkRequest request = new PeriodicWorkRequest.Builder(
-                RagIndexWorker.class, 15, TimeUnit.MINUTES)
+                JarvisIndexWorker.class, 15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build();
 
