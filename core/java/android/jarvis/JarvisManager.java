@@ -92,6 +92,46 @@ public class JarvisManager {
     }
 
     // -------------------------------------------------------------------------
+    // Multimodal API (Phase 6)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Submit a query with an image.
+     *
+     * @param query     natural language question about the image
+     * @param imageData raw JPEG or PNG bytes (null = text-only fallback)
+     * @return response string
+     * @throws JarvisException if the service is unavailable
+     */
+    public String queryWithImage(String query, byte[] imageData) throws JarvisException {
+        validateNotEmpty(query, "query");
+        try {
+            return requireService().processQueryWithImage(query, imageData);
+        } catch (RemoteException e) {
+            Log.e(TAG, "queryWithImage() failed", e);
+            throw new JarvisException("Failed to process image query", e);
+        }
+    }
+
+    /**
+     * Submit a query with audio input.
+     *
+     * @param query   optional text context (may be empty — model uses audio as primary input)
+     * @param pcmData 16kHz mono 16-bit PCM bytes (null = text-only fallback)
+     * @return response string
+     * @throws JarvisException if the service is unavailable
+     */
+    public String queryWithAudio(String query, byte[] pcmData) throws JarvisException {
+        try {
+            return requireService().processQueryWithAudio(
+                    query != null ? query : "", pcmData);
+        } catch (RemoteException e) {
+            Log.e(TAG, "queryWithAudio() failed", e);
+            throw new JarvisException("Failed to process audio query", e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Service health
     // -------------------------------------------------------------------------
 

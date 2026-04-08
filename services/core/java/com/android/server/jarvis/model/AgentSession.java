@@ -71,6 +71,12 @@ public class AgentSession {
     public long createdAt;
     public long lastUpdatedAt;
 
+    /**
+     * True once DreamWorker has processed this session into UserContext facts.
+     * DreamWorker only reads sessions where status=DONE and consolidated=false.
+     */
+    public boolean consolidated;
+
     /** Full turn history — consumed by DreamWorker in Phase 6. */
     public ToMany<AgentTurn> turns;
 }

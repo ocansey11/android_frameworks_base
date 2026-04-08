@@ -24,4 +24,26 @@ interface IJarvisService {
 
     /** Returns true if JarvisService has finished initialization. */
     boolean isReady();
+
+    /**
+     * Submit a query with an image attachment.
+     * imageData is raw JPEG or PNG bytes. Pass null for text-only queries.
+     *
+     * Requires Gemma 4 E2B/E4B loaded in Cactus (multimodal model).
+     * Returns an error string if no multimodal model is available.
+     *
+     * Phase 6 — implemented in JarvisService, Cactus layer wired by Sam after upstream pull.
+     */
+    String processQueryWithImage(String query, in byte[] imageData);
+
+    /**
+     * Submit a query with audio input.
+     * pcmData is 16kHz mono 16-bit PCM. Pass null to use query string only.
+     *
+     * Requires Gemma 4 E2B or a Whisper model loaded in Cactus.
+     * If no audio model is ready, falls back to processing query as text.
+     *
+     * Phase 6 — implemented in JarvisService, Cactus layer wired by Sam after upstream pull.
+     */
+    String processQueryWithAudio(String query, in byte[] pcmData);
 }

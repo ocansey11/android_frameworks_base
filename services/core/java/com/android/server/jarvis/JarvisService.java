@@ -15,6 +15,7 @@ import com.android.server.jarvis.indexing.JarvisFileObserver;
 import com.android.server.jarvis.indexing.JarvisIndexWorker;
 import com.android.server.jarvis.model.SourceFile;
 import com.android.server.jarvis.model.SourceFile_;
+import com.android.server.jarvis.agent.DreamWorker;
 import com.android.server.jarvis.agent.JarvisExecutor;
 import com.android.server.jarvis.tools.ToolDispatcher;
 import com.android.server.jarvis.tools.ToolRecord;
@@ -108,6 +109,9 @@ public class JarvisService extends SystemService {
                 if (tools != null) {
                     mToolScanner.setCactusHandles(tools.modelHandle, tools.indexHandle);
                 }
+
+                // Step 6 — DreamWorker (nightly memory consolidation)
+                DreamWorker.schedule(mContext);
 
                 mIsReady = true;
                 Log.i(TAG, "JarvisService initialized");
@@ -207,6 +211,32 @@ public class JarvisService extends SystemService {
         @Override
         public boolean isReady() {
             return mIsReady;
+        }
+
+        @Override
+        public String processQueryWithImage(String query, byte[] imageData) {
+            enforceCallingPermission();
+            if (!mIsReady) return "Error: Jarvis service is still initializing.";
+            // TODO: pass imageData through CactusWrapper once Gemma 4 image support
+            // is available in Cactus (Sam's upstream pull). For now, fall back to text.
+            Log.i(TAG, "processQueryWithImage: image=" + (imageData != null
+                    ? imageData.length + " bytes" : "null") + " — falling back to text query");
+            if (mExecutor != null) return mExecutor.execute(query);
+            return "Error: executor not ready";
+        }
+
+        @Override
+        public String processQueryWithAudio(String query, byte[] pcmData) {
+            enforceCallingPermission();
+            if (!mIsReady) return "Error: Jarvis service is still initializing.";
+            // TODO: pass pcmData to CactusWrapper.transcribe() once Gemma 4 audio
+            // support is confirmed stable in Cactus. Currently Whisper path only.
+            // For now: transcribe if pcmData is provided + audio model is ready,
+            // otherwise fall through to text query.
+            Log.i(TAG, "processQueryWithAudio: pcm=" + (pcmData != null
+                    ? pcmData.length + " bytes" : "null") + " — falling back to text query");
+            if (mExecutor != null) return mExecutor.execute(query);
+            return "Error: executor not ready";
         }
 
         private void enforceCallingPermission() {

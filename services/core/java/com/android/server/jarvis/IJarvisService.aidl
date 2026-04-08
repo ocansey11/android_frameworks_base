@@ -24,4 +24,10 @@ interface IJarvisService {
 
     /** Returns true if JarvisService has finished initialization. */
     boolean isReady();
+
+    /** Phase 6 — multimodal: image + text query. imageData = raw JPEG/PNG bytes. */
+    String processQueryWithImage(String query, in byte[] imageData);
+
+    /** Phase 6 — multimodal: audio + text query. pcmData = 16kHz mono 16-bit PCM. */
+    String processQueryWithAudio(String query, in byte[] pcmData);
 }

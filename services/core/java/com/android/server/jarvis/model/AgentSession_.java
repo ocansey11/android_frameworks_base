@@ -32,6 +32,7 @@ public final class AgentSession_ implements EntityInfo<AgentSession> {
     public static final Property<AgentSession> finalAnswer;
     public static final Property<AgentSession> createdAt;
     public static final Property<AgentSession> lastUpdatedAt;
+    public static final Property<AgentSession> consolidated;
 
     static {
         id                 = new Property<>(INSTANCE, 0,  PropertyType.Long,   long.class,   "id",                 true,  "id");
@@ -46,6 +47,7 @@ public final class AgentSession_ implements EntityInfo<AgentSession> {
         finalAnswer        = new Property<>(INSTANCE, 9,  PropertyType.String, String.class, "finalAnswer",        false, "finalAnswer");
         createdAt          = new Property<>(INSTANCE, 10, PropertyType.Long,   long.class,   "createdAt",          false, "createdAt");
         lastUpdatedAt      = new Property<>(INSTANCE, 11, PropertyType.Long,   long.class,   "lastUpdatedAt",      false, "lastUpdatedAt");
+        consolidated       = new Property<>(INSTANCE, 12, PropertyType.Bool,   boolean.class,"consolidated",        false, "consolidated");
     }
 
     @Override public String getEntityName()  { return "AgentSession"; }
@@ -57,7 +59,7 @@ public final class AgentSession_ implements EntityInfo<AgentSession> {
     public Property<AgentSession>[] getAllProperties() {
         return new Property[]{ id, sessionId, originalQuery, currentPlan, lastToolResult,
                 accumulatedContext, turnCount, maxTurns, status, finalAnswer,
-                createdAt, lastUpdatedAt };
+                createdAt, lastUpdatedAt, consolidated };
     }
 
     @Override public Property<AgentSession> getIdProperty() { return id; }

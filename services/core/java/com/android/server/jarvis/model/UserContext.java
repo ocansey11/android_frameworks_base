@@ -18,6 +18,18 @@ public class UserContext {
     public long lastActiveAt;
     public String deviceLocale;
 
+    /**
+     * JSON array of learned facts about the user.
+     * Written by DreamWorker (Phase 6). Read by PlanNode and RespondNode to personalise responses.
+     * Example: ["User is a software engineer", "User frequently works with Python files",
+     *           "User prefers concise answers"]
+     * DreamWorker merges new facts and removes contradictions before writing.
+     */
+    public String facts;
+
+    /** Epoch ms when DreamWorker last ran consolidation. 0 = never run. */
+    public long consolidatedAt;
+
     public UserContext() {}
 
     public UserContext(String deviceLocale) {
