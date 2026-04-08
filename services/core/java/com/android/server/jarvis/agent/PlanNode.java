@@ -7,6 +7,8 @@ import com.android.server.jarvis.inference.CactusWrapper;
 import com.android.server.jarvis.model.AgentSession;
 import com.android.server.jarvis.model.AgentTurn;
 
+import java.util.List;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -42,7 +44,8 @@ public class PlanNode {
             return null;
         }
 
-        String plan = callModel(model.modelHandle, session.originalQuery);
+        String userFacts = UserContextHelper.loadFormattedFacts();
+        String plan = callModel(model.modelHandle, session.originalQuery, userFacts);
         if (plan == null) {
             Log.e(TAG, "PlanNode: model returned null");
             return null;
@@ -61,7 +64,7 @@ public class PlanNode {
         return plan;
     }
 
-    private String callModel(long modelHandle, String query) {
+    private String callModel(long modelHandle, String query, String userFacts) {
         try {
             JSONArray messages = new JSONArray();
             JSONObject userMsg = new JSONObject();
@@ -69,7 +72,8 @@ public class PlanNode {
             userMsg.put("content", query);
             messages.put(userMsg);
 
-            return CactusWrapper.complete(modelHandle, messages.toString(), null, null);
+            // userFacts is null on first boot or before DreamWorker has run — no-op
+            return CactusWrapper.complete(modelHandle, messages.toString(), userFacts, null);
         } catch (JSONException e) {
             Log.e(TAG, "PlanNode: failed to build messages", e);
             return null;

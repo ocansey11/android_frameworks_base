@@ -41,7 +41,8 @@ public class RespondNode {
             return null;
         }
 
-        String answer = callModel(model.modelHandle, session);
+        String userFacts = UserContextHelper.loadFormattedFacts();
+        String answer = callModel(model.modelHandle, session, userFacts);
         if (answer == null) {
             Log.e(TAG, "RespondNode: model returned null");
             return null;
@@ -60,7 +61,7 @@ public class RespondNode {
         return answer;
     }
 
-    private String callModel(long modelHandle, AgentSession session) {
+    private String callModel(long modelHandle, AgentSession session, String userFacts) {
         try {
             JSONArray messages = new JSONArray();
             JSONObject userMsg = new JSONObject();
@@ -68,16 +69,34 @@ public class RespondNode {
             userMsg.put("content", session.originalQuery);
             messages.put(userMsg);
 
+            // Merge user facts (DreamWorker output) with any retrieved/tool context.
+            // Facts go first so the model treats them as stable background knowledge.
+            // accumulatedContext (retrieved docs, tool results) goes second as session-specific detail.
+            String fullContext = buildContext(userFacts, session.accumulatedContext);
+
             return CactusWrapper.complete(
                     modelHandle,
                     messages.toString(),
-                    session.accumulatedContext,
+                    fullContext,
                     null);
 
         } catch (JSONException e) {
             Log.e(TAG, "RespondNode: failed to build messages", e);
             return null;
         }
+    }
+
+    /**
+     * Combine user facts with session context.
+     * Either or both may be null — returns whichever is non-null, or null if both are.
+     */
+    private String buildContext(String userFacts, String accumulatedContext) {
+        boolean hasFacts   = userFacts != null && !userFacts.trim().isEmpty();
+        boolean hasContext = accumulatedContext != null && !accumulatedContext.trim().isEmpty();
+        if (hasFacts && hasContext) return userFacts + "\n\n" + accumulatedContext;
+        if (hasFacts)   return userFacts;
+        if (hasContext) return accumulatedContext;
+        return null;
     }
 
     private ModelRegistry.ModelEntry getModel() {
