@@ -406,6 +406,57 @@ public class ToolDispatcher {
     }
 
     // -------------------------------------------------------------------------
+    // Phase 5: named dispatch (called by ToolNode when tool name is already known)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Dispatch a tool by its exact name, bypassing semantic search.
+     *
+     * Used by ToolNode when Gemma 4 has already identified the tool via <|tool_call|>.
+     * No model call is made — we just look up the ToolRecord by name and fire the broadcast.
+     *
+     * @param toolName  exact name from ToolRecord.toolName
+     * @param argsJson  JSON object string of arguments (e.g. {"passport_number":"GH123456"})
+     * @return the tool's result string, or an error string on failure (never null)
+     */
+    public String dispatchByName(String toolName, String argsJson) {
+        if (toolName == null || toolName.trim().isEmpty()) {
+            return "Error: toolName is null or empty";
+        }
+        if (!JarvisStore.isReady()) {
+            return "Error: store not ready";
+        }
+
+        // Look up the ToolRecord by exact name
+        ToolRecord tool = JarvisStore.box(ToolRecord.class).query()
+                .equal(ToolRecord_.toolName, toolName,
+                        io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                .build().findFirst();
+
+        if (tool == null) {
+            Log.w(TAG, "dispatchByName: no ToolRecord found for name=" + toolName);
+            return "Error: tool '" + toolName + "' not registered";
+        }
+
+        AppRecord app = tool.app.getTarget();
+        if (app == null) {
+            Log.w(TAG, "dispatchByName: ToolRecord has no AppRecord for name=" + toolName);
+            return "Error: tool '" + toolName + "' has no associated app";
+        }
+
+        JSONObject arguments = new JSONObject();
+        if (argsJson != null && !argsJson.trim().isEmpty()) {
+            try {
+                arguments = new JSONObject(argsJson);
+            } catch (JSONException e) {
+                Log.w(TAG, "dispatchByName: invalid argsJson — " + argsJson);
+            }
+        }
+
+        return dispatch(new ToolCall(tool, app, arguments));
+    }
+
+    // -------------------------------------------------------------------------
     // Internal data class
     // -------------------------------------------------------------------------
 

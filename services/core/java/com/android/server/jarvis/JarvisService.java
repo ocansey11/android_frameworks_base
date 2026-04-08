@@ -15,6 +15,7 @@ import com.android.server.jarvis.indexing.JarvisFileObserver;
 import com.android.server.jarvis.indexing.JarvisIndexWorker;
 import com.android.server.jarvis.model.SourceFile;
 import com.android.server.jarvis.model.SourceFile_;
+import com.android.server.jarvis.agent.JarvisExecutor;
 import com.android.server.jarvis.tools.ToolDispatcher;
 import com.android.server.jarvis.tools.ToolRecord;
 import com.android.server.jarvis.tools.ToolScannerService;
@@ -62,6 +63,7 @@ public class JarvisService extends SystemService {
     private JarvisFileObserver[] mFileObservers;
     private ToolScannerService mToolScanner;
     private ToolDispatcher mToolDispatcher;
+    private JarvisExecutor mExecutor;
 
     public JarvisService(Context context) {
         super(context);
@@ -99,6 +101,7 @@ public class JarvisService extends SystemService {
                 // Step 5 — Tool Registry
                 mToolScanner    = new ToolScannerService(mContext);
                 mToolDispatcher = new ToolDispatcher(mContext);
+                mExecutor       = new JarvisExecutor(mToolDispatcher);
                 mToolScanner.start();
 
                 ModelRegistry.ModelEntry tools = registry.getReady("tools");
@@ -160,16 +163,11 @@ public class JarvisService extends SystemService {
             Log.i(TAG, "processQuery: " + query.substring(0, Math.min(50, query.length())));
 
             try {
-                // Tool path — attempt tool dispatch first
-                // Returns null if no tool matches, falls through to RAG
-                if (mToolDispatcher != null) {
-                    String toolResult = mToolDispatcher.resolveAndDispatch(query);
-                    if (toolResult != null) return toolResult;
+                if (mExecutor != null) {
+                    return mExecutor.execute(query);
                 }
-
-                // RAG path — TODO: wire MetadataSearch + CactusWrapper.complete()
-                return "Jarvis received: \"" + query + "\"\n\nTODO: Implement RAG pipeline";
-
+                // Executor not ready — service still initializing
+                return "Error: Jarvis service is still initializing. Please try again.";
             } catch (Exception e) {
                 Log.e(TAG, "processQuery failed", e);
                 return "Error: " + e.getMessage();

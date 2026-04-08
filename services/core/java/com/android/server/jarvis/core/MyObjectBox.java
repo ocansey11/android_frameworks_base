@@ -1,6 +1,8 @@
 package com.android.server.jarvis.core;
 
 import com.android.server.jarvis.model.AccessLog_;
+import com.android.server.jarvis.model.AgentSession_;
+import com.android.server.jarvis.model.AgentTurn_;
 import com.android.server.jarvis.model.Folder_;
 import com.android.server.jarvis.model.SourceFile_;
 import com.android.server.jarvis.model.TaskMemory_;
@@ -39,6 +41,8 @@ public final class MyObjectBox {
         builder.entity(Folder_.INSTANCE);
         builder.entity(AccessLog_.INSTANCE);
         builder.entity(TaskMemory_.INSTANCE);
+        builder.entity(AgentSession_.INSTANCE);
+        builder.entity(AgentTurn_.INSTANCE);
         return builder;
     }
 }
