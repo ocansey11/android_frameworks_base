@@ -21,6 +21,7 @@ java_library {
     name: "services.jarvis",
     srcs: [
         "*.java",
+        "agent/*.java",
         "core/*.java",
         "inference/*.java",
         "indexing/*.java",

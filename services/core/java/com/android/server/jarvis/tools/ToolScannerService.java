@@ -170,6 +170,14 @@ public class ToolScannerService {
     private void upsert(String packageName, String appLabel, String sourceType,
                         String receiverClass, String toolName,
                         String description, String paramsJson) {
+        upsert(packageName, appLabel, sourceType, receiverClass,
+                toolName, description, paramsJson, false);
+    }
+
+    private void upsert(String packageName, String appLabel, String sourceType,
+                        String receiverClass, String toolName,
+                        String description, String paramsJson,
+                        boolean requiresConfirmation) {
 
         if (!JarvisStore.isReady()) {
             Log.w(TAG, "ObjectBox not ready — skipping: " + packageName + "/" + toolName);
@@ -207,13 +215,15 @@ public class ToolScannerService {
 
         if (tool == null) {
             tool = new ToolRecord(toolName, description, paramsJson, rawDefinition, receiverClass);
+            tool.requiresConfirmation = requiresConfirmation;
             tool.app.setTarget(app);
             toolBox.put(tool);
             Log.i(TAG, "New tool registered: " + packageName + "/" + toolName);
         } else {
-            tool.description   = description;
-            tool.paramsJson    = paramsJson;
-            tool.rawDefinition = rawDefinition;
+            tool.description          = description;
+            tool.paramsJson           = paramsJson;
+            tool.rawDefinition        = rawDefinition;
+            tool.requiresConfirmation = requiresConfirmation;
             toolBox.put(tool);
             Log.i(TAG, "Tool updated: " + packageName + "/" + toolName);
         }
@@ -402,8 +412,11 @@ public class ToolScannerService {
                 JSONArray params = obj.optJSONArray("params");
                 if (params != null) paramsJson = params.toString();
 
+                boolean requiresConfirmation = obj.optBoolean("requires_confirmation", false);
+
                 upsert(packageName, appLabel, "curated",
-                        receiverClass, toolName, description, paramsJson);
+                        receiverClass, toolName, description, paramsJson,
+                        requiresConfirmation);
                 loaded++;
 
             } catch (Exception e) {

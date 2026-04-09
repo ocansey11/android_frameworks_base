@@ -63,6 +63,17 @@ public class ToolRecord {
      */
     public int cactusIndexId;
 
+    /**
+     * If true, ToolDispatcher will NOT execute this tool automatically.
+     * Instead it returns a CONFIRM_REQUIRED string so the agentic loop
+     * surfaces a confirmation prompt to the user.
+     *
+     * Set from JSON field "requires_confirmation": true for destructive tools
+     * (make_phone_call, send_sms). Phase 7: add pendingToolCall to AgentSession
+     * so the confirmed action persists across the next processQuery() call.
+     */
+    public boolean requiresConfirmation;
+
     /** FK → owning app. Phase 5 ToolNode uses this to know where to dispatch. */
     public ToOne<AppRecord> app;
 

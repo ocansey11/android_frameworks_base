@@ -290,6 +290,16 @@ public class ToolDispatcher {
      * with EXTRA_TOOL_RESULT containing the result string.
      */
     private String dispatch(ToolCall call) {
+        // Confirmation gate — do not execute destructive tools without explicit user approval.
+        // Phase 7: persist pendingToolCall in AgentSession so the next processQuery()
+        // can fire it after the user confirms.
+        if (call.tool.requiresConfirmation) {
+            Log.i(TAG, "Confirmation required for: " + call.tool.toolName);
+            return "CONFIRM_REQUIRED: I found the '" + call.tool.toolName
+                    + "' action but need your explicit confirmation before executing it. "
+                    + "Please confirm you want to proceed.";
+        }
+
         // System tools execute in-process — no broadcast needed
         if (call.tool.receiverClass != null
                 && call.tool.receiverClass.startsWith("@system/")) {
