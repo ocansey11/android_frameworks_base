@@ -15,8 +15,12 @@ import android.util.Log;
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.inference.CactusWrapper;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.xmlpull.v1.XmlPullParser;
 
+import java.io.File;
+import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,6 +52,9 @@ public class ToolScannerService {
     private static final String META_TOOL_DESCRIPTION  = "com.jarvisos.tool.description";
     private static final String META_TOOL_INPUT_SCHEMA = "com.jarvisos.tool.input_schema";
 
+    /** On-device path where curated tool JSON files are placed via PRODUCT_COPY_FILES. */
+    private static final String CURATED_TOOLS_DIR = "/system/etc/jarvisos/tools";
+
     private final Context mContext;
     private final PackageManager mPackageManager;
     private PackageEventReceiver mReceiver;
@@ -65,6 +72,7 @@ public class ToolScannerService {
     // -------------------------------------------------------------------------
 
     public void start() {
+        loadCuratedTools();
         scanAllPackages();
 
         mReceiver = new PackageEventReceiver();
@@ -332,6 +340,90 @@ public class ToolScannerService {
 
     private static String sanitise(String s) {
         return s == null ? "" : s.replace("\"", "'");
+    }
+
+    // -------------------------------------------------------------------------
+    // Curated tools loader
+    // -------------------------------------------------------------------------
+
+    /**
+     * Load curated tool definitions from /system/etc/jarvisos/tools/*.json.
+     *
+     * These are stand-ins for Desmond's in-house apps: they prove the full
+     * pipeline (scan → embed → route → dispatch → result) before any custom APK
+     * exists. When a real app ships with a manifest <receiver>, ToolScannerService
+     * picks it up via scanAllPackages() and that supersedes the JSON stub.
+     *
+     * System tools (receiver_class starting with "@system/") are dispatched
+     * in-process by SystemToolExecutor — no APK needed, ever.
+     *
+     * JSON format per file:
+     *   {
+     *     "package_name":   "com.jarvisos.system",
+     *     "app_label":      "JarvisOS System",
+     *     "receiver_class": "@system/set_alarm",
+     *     "tool_name":      "set_alarm",
+     *     "description":    "...",
+     *     "params": [
+     *       {"name":"hour","type":"integer","required":true,"description":"..."},
+     *       ...
+     *     ]
+     *   }
+     */
+    private void loadCuratedTools() {
+        File dir = new File(CURATED_TOOLS_DIR);
+        if (!dir.exists() || !dir.isDirectory()) {
+            Log.i(TAG, "No curated tools directory at " + CURATED_TOOLS_DIR + " — skipping");
+            return;
+        }
+
+        File[] files = dir.listFiles(f -> f.getName().endsWith(".json"));
+        if (files == null || files.length == 0) {
+            Log.i(TAG, "No curated tool JSON files found in " + CURATED_TOOLS_DIR);
+            return;
+        }
+
+        Log.i(TAG, "Loading " + files.length + " curated tool file(s)");
+        int loaded = 0;
+
+        for (File file : files) {
+            try {
+                String json = readFile(file);
+                if (json == null) continue;
+
+                JSONObject obj      = new JSONObject(json);
+                String packageName  = obj.getString("package_name");
+                String appLabel     = obj.optString("app_label", packageName);
+                String receiverClass = obj.getString("receiver_class");
+                String toolName     = obj.getString("tool_name");
+                String description  = obj.getString("description");
+
+                String paramsJson = null;
+                JSONArray params = obj.optJSONArray("params");
+                if (params != null) paramsJson = params.toString();
+
+                upsert(packageName, appLabel, "curated",
+                        receiverClass, toolName, description, paramsJson);
+                loaded++;
+
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to load curated tool from " + file.getName(), e);
+            }
+        }
+
+        Log.i(TAG, "Loaded " + loaded + " curated tool(s)");
+    }
+
+    private static String readFile(File file) {
+        try (FileReader fr = new FileReader(file)) {
+            char[] buf = new char[(int) file.length()];
+            int read = fr.read(buf);
+            if (read <= 0) return null;
+            return new String(buf, 0, read);
+        } catch (Exception e) {
+            Log.w(TAG, "readFile failed: " + file.getName(), e);
+            return null;
+        }
     }
 
     // -------------------------------------------------------------------------

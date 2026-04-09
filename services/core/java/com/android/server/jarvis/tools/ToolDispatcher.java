@@ -283,12 +283,19 @@ public class ToolDispatcher {
     // -------------------------------------------------------------------------
 
     /**
-     * Fire a broadcast Intent to the app's receiver and wait for the result.
+     * Dispatch a tool call — routes to SystemToolExecutor for @system/ tools,
+     * or fires a broadcast for app-declared tools.
      *
-     * The app's BroadcastReceiver must call resultReceiver.send(RESULT_OK, bundle)
+     * App receivers must call resultReceiver.send(RESULT_OK, bundle)
      * with EXTRA_TOOL_RESULT containing the result string.
      */
     private String dispatch(ToolCall call) {
+        // System tools execute in-process — no broadcast needed
+        if (call.tool.receiverClass != null
+                && call.tool.receiverClass.startsWith("@system/")) {
+            String toolName = call.tool.receiverClass.substring("@system/".length());
+            return SystemToolExecutor.execute(mContext, toolName, call.arguments);
+        }
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<String> resultRef = new AtomicReference<>(null);
 

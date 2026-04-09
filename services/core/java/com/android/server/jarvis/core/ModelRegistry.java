@@ -58,29 +58,37 @@ public class ModelRegistry {
     // -------------------------------------------------------------------------
 
     public static class ModelEntry {
-        public final String name;
-        public final String modelPath;
-        public final String indexDir;
-        public final int    embeddingDim;
+        public final String  name;
+        public final String  modelPath;
+        public final String  indexDir;      // null for chat-only models
+        public final int     embeddingDim;  // -1 for chat-only models
+        public final boolean chatOnly;      // true = complete() only, no index needed
 
         public volatile long modelHandle = 0L;
         public volatile long indexHandle = 0L;
 
-        ModelEntry(String name, String modelPath, String indexDir, int embeddingDim) {
+        ModelEntry(String name, String modelPath, String indexDir, int embeddingDim,
+                boolean chatOnly) {
             this.name         = name;
             this.modelPath    = modelPath;
             this.indexDir     = indexDir;
             this.embeddingDim = embeddingDim;
+            this.chatOnly     = chatOnly;
         }
 
-        /** True only when both handles are live. */
+        /**
+         * True when the model is usable.
+         * Chat-only models (chatOnly=true) only need a live modelHandle.
+         * Embedding models need both modelHandle and indexHandle.
+         */
         public boolean isReady() {
-            return modelHandle != 0L && indexHandle != 0L;
+            return modelHandle != 0L && (chatOnly || indexHandle != 0L);
         }
 
         @Override
         public String toString() {
             return "ModelEntry{name=" + name
+                    + ", chatOnly=" + chatOnly
                     + ", dim=" + embeddingDim
                     + ", modelReady=" + (modelHandle != 0L)
                     + ", indexReady=" + (indexHandle != 0L) + "}";
@@ -116,7 +124,7 @@ public class ModelRegistry {
             return existing;
         }
 
-        ModelEntry entry = new ModelEntry(name, modelPath, indexDir, embeddingDim);
+        ModelEntry entry = new ModelEntry(name, modelPath, indexDir, embeddingDim, false);
         mEntries.put(name, entry);
 
         // Initialize model handle
@@ -138,6 +146,35 @@ public class ModelRegistry {
         }
 
         Log.i(TAG, "Registered: " + entry);
+        return entry;
+    }
+
+    /**
+     * Register a chat/generation model that does NOT need a vector index.
+     *
+     * Use this for models that are called via complete() only (e.g. Gemma 4).
+     * isReady() on the returned entry only requires a live modelHandle.
+     *
+     * @param name      logical name, e.g. "primary"
+     * @param modelPath absolute path to the .gguf model file
+     * @return the initialized ModelEntry, or an entry with 0L handle on failure
+     */
+    public ModelEntry registerChatModel(String name, String modelPath) {
+        ModelEntry existing = mEntries.get(name);
+        if (existing != null && existing.isReady()) {
+            Log.d(TAG, "Already registered and ready: " + name);
+            return existing;
+        }
+
+        ModelEntry entry = new ModelEntry(name, modelPath, null, -1, true);
+        mEntries.put(name, entry);
+
+        entry.modelHandle = CactusWrapper.init(modelPath, null, false);
+        if (entry.modelHandle == 0L) {
+            Log.e(TAG, "Failed to init chat model: " + name + " path=" + modelPath);
+        } else {
+            Log.i(TAG, "Registered chat model: " + entry);
+        }
         return entry;
     }
 
@@ -178,7 +215,7 @@ public class ModelRegistry {
     public void destroy(String name) {
         ModelEntry entry = mEntries.remove(name);
         if (entry == null) return;
-        if (entry.indexHandle != 0L) {
+        if (!entry.chatOnly && entry.indexHandle != 0L) {
             CactusWrapper.indexDestroy(entry.indexHandle);
             entry.indexHandle = 0L;
         }

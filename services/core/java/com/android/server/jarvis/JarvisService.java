@@ -47,11 +47,12 @@ public class JarvisService extends SystemService {
 
     private static final String TAG = "JarvisService";
 
-    private static final String STORE_DIR       = "/data/system/jarvis/objectbox";
-    private static final String MODEL_PATH      = "/data/system/jarvis/models/embed.gguf";
-    private static final String INDEX_DIR_RAG   = "/data/system/jarvis/index_rag";
-    private static final String INDEX_DIR_TOOLS = "/data/system/jarvis/index_tools";
-    private static final int    EMBED_DIM       = 1024;
+    private static final String STORE_DIR            = "/data/system/jarvis/objectbox";
+    private static final String MODEL_PATH           = "/data/system/jarvis/models/embed.gguf";
+    private static final String GEMMA4_MODEL_PATH    = "/data/system/jarvis/models/gemma4.gguf";
+    private static final String INDEX_DIR_RAG        = "/data/system/jarvis/index_rag";
+    private static final String INDEX_DIR_TOOLS      = "/data/system/jarvis/index_tools";
+    private static final int    EMBED_DIM            = 1024;
 
     private static final String[] WATCH_PATHS = {
         Environment.getExternalStorageDirectory().getAbsolutePath() + "/Documents",
@@ -87,11 +88,13 @@ public class JarvisService extends SystemService {
 
                 // Step 2 — ModelRegistry
                 ModelRegistry registry = ModelRegistry.getInstance();
-                ModelRegistry.ModelEntry ragModel   = registry.register("rag",   MODEL_PATH, INDEX_DIR_RAG,   EMBED_DIM);
-                ModelRegistry.ModelEntry toolsModel = registry.register("tools", MODEL_PATH, INDEX_DIR_TOOLS, EMBED_DIM);
+                ModelRegistry.ModelEntry ragModel     = registry.register("rag",   MODEL_PATH, INDEX_DIR_RAG,   EMBED_DIM);
+                ModelRegistry.ModelEntry toolsModel   = registry.register("tools", MODEL_PATH, INDEX_DIR_TOOLS, EMBED_DIM);
+                ModelRegistry.ModelEntry primaryModel = registry.registerChatModel("primary", GEMMA4_MODEL_PATH);
 
-                if (!ragModel.isReady())   Log.w(TAG, "RAG model not ready — embeddings disabled");
-                if (!toolsModel.isReady()) Log.w(TAG, "Tools model not ready — tool embeddings disabled");
+                if (!ragModel.isReady())     Log.w(TAG, "RAG model not ready — embeddings disabled");
+                if (!toolsModel.isReady())   Log.w(TAG, "Tools model not ready — tool embeddings disabled");
+                if (!primaryModel.isReady()) Log.w(TAG, "Primary model not ready — PlanNode/RespondNode will fall back to rag");
 
                 // Step 3 — FileObservers
                 startFileObservers();
