@@ -1,5 +1,7 @@
 package com.android.server.jarvis.model;
 
+import io.objectbox.BoxStore;
+import io.objectbox.annotation.Backlink;
 import io.objectbox.annotation.Entity;
 import io.objectbox.annotation.Id;
 import io.objectbox.relation.ToOne;
@@ -16,6 +18,9 @@ public class SourceFile {
     @Id
     public long id;
 
+    /** Set by the generated cursor; the relation fields below need it to resolve their targets. */
+    transient BoxStore __boxStore;
+
     public String filePath;
     public String fileName;
     public String userAlias;      // what the user calls this file e.g. "my biology notes"
@@ -29,9 +34,11 @@ public class SourceFile {
     public long lastAccessedAt;
 
     // Relations
-    public ToOne<Folder> folder;
-    public ToMany<DocumentChunk> chunks;
-    public ToMany<Conversation> conversations;
+    public ToOne<Folder> folder = new ToOne<>(this, SourceFile_.folder);
+    @Backlink(to = "sourceFile")
+    public ToMany<DocumentChunk> chunks = new ToMany<>(this, SourceFile_.chunks);
+    @Backlink(to = "referencedFiles")
+    public ToMany<Conversation> conversations = new ToMany<>(this, SourceFile_.conversations);
 
     public SourceFile() {}
 

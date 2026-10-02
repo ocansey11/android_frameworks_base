@@ -1,5 +1,7 @@
 package com.android.server.jarvis.tools;
 
+import io.objectbox.BoxStore;
+import io.objectbox.annotation.Backlink;
 import io.objectbox.annotation.Entity;
 import io.objectbox.annotation.Id;
 import io.objectbox.relation.ToMany;
@@ -23,6 +25,9 @@ public class AppRecord {
     @Id
     public long id;
 
+    /** Set by the generated cursor; the relation fields below need it to resolve their targets. */
+    transient BoxStore __boxStore;
+
     /** e.g. com.borderless.app */
     public String packageName;
 
@@ -42,7 +47,8 @@ public class AppRecord {
     public boolean isActive;
 
     /** All tools this app has registered. */
-    public ToMany<ToolRecord> tools;
+    @Backlink(to = "app")
+    public ToMany<ToolRecord> tools = new ToMany<>(this, AppRecord_.tools);
 
     public AppRecord() {}
 

@@ -1,0 +1,625 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:5865185351678958405",
+      "lastPropertyId": "5:6444628611872497061",
+      "name": "AccessLog",
+      "properties": [
+        {
+          "id": "1:8805437090273078666",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4361353715204459624",
+          "name": "fileId",
+          "type": 6
+        },
+        {
+          "id": "3:4015084259504197812",
+          "name": "conversationId",
+          "type": 6
+        },
+        {
+          "id": "4:8949923929063440688",
+          "name": "accessedAt",
+          "type": 6
+        },
+        {
+          "id": "5:6444628611872497061",
+          "name": "wasHelpful",
+          "type": 1
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "2:8993120973033714162",
+      "lastPropertyId": "13:3655138000573453920",
+      "name": "AgentSession",
+      "properties": [
+        {
+          "id": "1:9066011117230712215",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4781500811389717661",
+          "name": "sessionId",
+          "type": 9
+        },
+        {
+          "id": "3:1472336787599788482",
+          "name": "originalQuery",
+          "type": 9
+        },
+        {
+          "id": "4:974697612039431209",
+          "name": "currentPlan",
+          "type": 9
+        },
+        {
+          "id": "5:7292233678790929992",
+          "name": "lastToolResult",
+          "type": 9
+        },
+        {
+          "id": "6:2736348219590538756",
+          "name": "accumulatedContext",
+          "type": 9
+        },
+        {
+          "id": "7:2002142223898404321",
+          "name": "turnCount",
+          "type": 5
+        },
+        {
+          "id": "8:1563643957480379853",
+          "name": "maxTurns",
+          "type": 5
+        },
+        {
+          "id": "9:4622658663220864407",
+          "name": "status",
+          "type": 9
+        },
+        {
+          "id": "10:2994745555149246273",
+          "name": "finalAnswer",
+          "type": 9
+        },
+        {
+          "id": "11:7091951776671932025",
+          "name": "createdAt",
+          "type": 6
+        },
+        {
+          "id": "12:3091877501750297484",
+          "name": "lastUpdatedAt",
+          "type": 6
+        },
+        {
+          "id": "13:3655138000573453920",
+          "name": "consolidated",
+          "type": 1
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "3:8344271588581838447",
+      "lastPropertyId": "7:3412710813658673535",
+      "name": "AgentTurn",
+      "properties": [
+        {
+          "id": "1:1642468120786338368",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4704496076042695513",
+          "name": "role",
+          "type": 9
+        },
+        {
+          "id": "3:7030930680933494753",
+          "name": "content",
+          "type": 9
+        },
+        {
+          "id": "4:4691511503591736343",
+          "name": "toolName",
+          "type": 9
+        },
+        {
+          "id": "5:2533921121272794736",
+          "name": "toolArgs",
+          "type": 9
+        },
+        {
+          "id": "6:6103233569354302238",
+          "name": "timestamp",
+          "type": 6
+        },
+        {
+          "id": "7:3412710813658673535",
+          "name": "sessionId",
+          "indexId": "1:1180267484368479608",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "AgentSession"
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "4:104837957485342565",
+      "lastPropertyId": "6:2563489744931152613",
+      "name": "AppRecord",
+      "properties": [
+        {
+          "id": "1:298893425102039614",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:6131526216535556763",
+          "name": "packageName",
+          "type": 9
+        },
+        {
+          "id": "3:3015904084672860179",
+          "name": "appLabel",
+          "type": 9
+        },
+        {
+          "id": "4:2078547040453812772",
+          "name": "sourceType",
+          "type": 9
+        },
+        {
+          "id": "5:7966209900454578334",
+          "name": "lastScanTime",
+          "type": 6
+        },
+        {
+          "id": "6:2563489744931152613",
+          "name": "isActive",
+          "type": 1
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "5:2819767465062455882",
+      "lastPropertyId": "6:3482726999944577583",
+      "name": "Conversation",
+      "properties": [
+        {
+          "id": "1:196234483410251333",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4095354392991821465",
+          "name": "title",
+          "type": 9
+        },
+        {
+          "id": "3:7724910737756867443",
+          "name": "createdAt",
+          "type": 6
+        },
+        {
+          "id": "4:5839641827895665569",
+          "name": "lastMessageAt",
+          "type": 6
+        },
+        {
+          "id": "5:6947091190784573782",
+          "name": "lastMessagePreview",
+          "type": 9
+        },
+        {
+          "id": "6:3482726999944577583",
+          "name": "mode",
+          "type": 9
+        }
+      ],
+      "relations": [
+        {
+          "id": "1:3455510513232033727",
+          "name": "referencedFiles",
+          "targetId": "9:8712196067765286206"
+        }
+      ]
+    },
+    {
+      "id": "6:6878213906180263136",
+      "lastPropertyId": "8:3355500354216602402",
+      "name": "DocumentChunk",
+      "properties": [
+        {
+          "id": "1:4731657768460388465",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:6139962230787098058",
+          "name": "cactusIndexId",
+          "type": 5
+        },
+        {
+          "id": "3:5513938961769879923",
+          "name": "chunkIndex",
+          "type": 5
+        },
+        {
+          "id": "4:7661666537744062772",
+          "name": "summary",
+          "type": 9
+        },
+        {
+          "id": "5:6661415160980489264",
+          "name": "tokenCount",
+          "type": 5
+        },
+        {
+          "id": "6:574717536663365352",
+          "name": "embeddedAt",
+          "type": 6
+        },
+        {
+          "id": "7:5122033646772071338",
+          "name": "embeddingRetained",
+          "type": 1
+        },
+        {
+          "id": "8:3355500354216602402",
+          "name": "sourceFileId",
+          "indexId": "2:5961109128535499620",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "SourceFile"
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "7:8884378356230875581",
+      "lastPropertyId": "8:9096815286276287908",
+      "name": "Folder",
+      "properties": [
+        {
+          "id": "1:8588238720434459586",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:956083410901755080",
+          "name": "folderPath",
+          "type": 9
+        },
+        {
+          "id": "3:4936382503614434706",
+          "name": "displayName",
+          "type": 9
+        },
+        {
+          "id": "4:4722669162723652282",
+          "name": "tags",
+          "type": 9
+        },
+        {
+          "id": "5:879163776849233740",
+          "name": "summary",
+          "type": 9
+        },
+        {
+          "id": "6:2029611348229269562",
+          "name": "fileCount",
+          "type": 5
+        },
+        {
+          "id": "7:5701573469841092888",
+          "name": "lastUpdatedAt",
+          "type": 6
+        },
+        {
+          "id": "8:9096815286276287908",
+          "name": "parentFolderId",
+          "indexId": "3:8869471228172267601",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "Folder"
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "8:5328290195839763856",
+      "lastPropertyId": "6:3285158787498915498",
+      "name": "Message",
+      "properties": [
+        {
+          "id": "1:4845771595044232933",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4753852696201058306",
+          "name": "content",
+          "type": 9
+        },
+        {
+          "id": "3:6712752765425535274",
+          "name": "isUser",
+          "type": 1
+        },
+        {
+          "id": "4:792122502436522332",
+          "name": "timestamp",
+          "type": 6
+        },
+        {
+          "id": "5:1614215718003036058",
+          "name": "source",
+          "type": 9
+        },
+        {
+          "id": "6:3285158787498915498",
+          "name": "conversationId",
+          "indexId": "4:3733890296287014422",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "Conversation"
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "9:8712196067765286206",
+      "lastPropertyId": "13:9055962025321565488",
+      "name": "SourceFile",
+      "properties": [
+        {
+          "id": "1:5042665544981329124",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:732866389784633914",
+          "name": "filePath",
+          "type": 9
+        },
+        {
+          "id": "3:4905331227139571546",
+          "name": "fileName",
+          "type": 9
+        },
+        {
+          "id": "4:7367546884604866602",
+          "name": "userAlias",
+          "type": 9
+        },
+        {
+          "id": "5:5440067477077841394",
+          "name": "tags",
+          "type": 9
+        },
+        {
+          "id": "6:5212369903827824089",
+          "name": "mimeType",
+          "type": 9
+        },
+        {
+          "id": "7:5726620894575425541",
+          "name": "fileSizeBytes",
+          "type": 6
+        },
+        {
+          "id": "8:616249601107533534",
+          "name": "fileHash",
+          "type": 9
+        },
+        {
+          "id": "9:8447013533571552152",
+          "name": "isIndexed",
+          "type": 1
+        },
+        {
+          "id": "10:5500376151147682257",
+          "name": "createdAt",
+          "type": 6
+        },
+        {
+          "id": "11:2616338058356603009",
+          "name": "lastModifiedAt",
+          "type": 6
+        },
+        {
+          "id": "12:6582351692640160458",
+          "name": "lastAccessedAt",
+          "type": 6
+        },
+        {
+          "id": "13:9055962025321565488",
+          "name": "folderId",
+          "indexId": "5:3169313819964008698",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "Folder"
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "10:2163637672977749695",
+      "lastPropertyId": "6:8856747766195001777",
+      "name": "TaskMemory",
+      "properties": [
+        {
+          "id": "1:698516752549413803",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:2684801778216575477",
+          "name": "taskDescription",
+          "type": 9
+        },
+        {
+          "id": "3:6145159778552697251",
+          "name": "approach",
+          "type": 9
+        },
+        {
+          "id": "4:7133092720675676720",
+          "name": "fileIdsUsed",
+          "type": 9
+        },
+        {
+          "id": "5:7813117688186960884",
+          "name": "embeddingsDiscarded",
+          "type": 1
+        },
+        {
+          "id": "6:8856747766195001777",
+          "name": "completedAt",
+          "type": 6
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "11:8287128223032117862",
+      "lastPropertyId": "9:8084968176320758193",
+      "name": "ToolRecord",
+      "properties": [
+        {
+          "id": "1:4986841424643759923",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:2359149922621922661",
+          "name": "toolName",
+          "type": 9
+        },
+        {
+          "id": "3:8099268941384063380",
+          "name": "description",
+          "type": 9
+        },
+        {
+          "id": "4:2739069215333386637",
+          "name": "paramsJson",
+          "type": 9
+        },
+        {
+          "id": "5:2438754035942828951",
+          "name": "rawDefinition",
+          "type": 9
+        },
+        {
+          "id": "6:6051490870532594631",
+          "name": "receiverClass",
+          "type": 9
+        },
+        {
+          "id": "7:4501491613299824035",
+          "name": "cactusIndexId",
+          "type": 5
+        },
+        {
+          "id": "8:3457298276641835258",
+          "name": "requiresConfirmation",
+          "type": 1
+        },
+        {
+          "id": "9:8084968176320758193",
+          "name": "appId",
+          "indexId": "6:3379031151269064229",
+          "type": 11,
+          "flags": 520,
+          "relationTarget": "AppRecord"
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "12:3333842739942764369",
+      "lastPropertyId": "8:6215560427882673488",
+      "name": "UserContext",
+      "properties": [
+        {
+          "id": "1:5348133900628657467",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:1485255517776348362",
+          "name": "preferredName",
+          "type": 9
+        },
+        {
+          "id": "3:2708577421185822933",
+          "name": "interests",
+          "type": 9
+        },
+        {
+          "id": "4:3319309978130566065",
+          "name": "frequentFolders",
+          "type": 9
+        },
+        {
+          "id": "5:6962625921946928238",
+          "name": "lastActiveAt",
+          "type": 6
+        },
+        {
+          "id": "6:4775636622302912304",
+          "name": "deviceLocale",
+          "type": 9
+        },
+        {
+          "id": "7:3673361999979423543",
+          "name": "facts",
+          "type": 9
+        },
+        {
+          "id": "8:6215560427882673488",
+          "name": "consolidatedAt",
+          "type": 6
+        }
+      ],
+      "relations": []
+    }
+  ],
+  "lastEntityId": "12:3333842739942764369",
+  "lastIndexId": "6:3379031151269064229",
+  "lastRelationId": "1:3455510513232033727",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 5,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}

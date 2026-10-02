@@ -1,5 +1,6 @@
 package com.android.server.jarvis.model;
 
+import io.objectbox.BoxStore;
 import io.objectbox.annotation.Entity;
 import io.objectbox.annotation.Id;
 import io.objectbox.relation.ToOne;
@@ -21,6 +22,9 @@ public class AgentTurn {
     @Id
     public long id;
 
+    /** Set by the generated cursor; the relation fields below need it to resolve their targets. */
+    transient BoxStore __boxStore;
+
     /** "model" | "tool" | "user" */
     public String role;
 
@@ -35,5 +39,5 @@ public class AgentTurn {
 
     public long timestamp;
 
-    public ToOne<AgentSession> session;
+    public ToOne<AgentSession> session = new ToOne<>(this, AgentTurn_.session);
 }

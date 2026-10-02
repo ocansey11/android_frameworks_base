@@ -1,5 +1,7 @@
 package com.android.server.jarvis.model;
 
+import io.objectbox.BoxStore;
+import io.objectbox.annotation.Backlink;
 import io.objectbox.annotation.Entity;
 import io.objectbox.annotation.Id;
 import io.objectbox.relation.ToOne;
@@ -15,6 +17,9 @@ public class Folder {
     @Id
     public long id;
 
+    /** Set by the generated cursor; the relation fields below need it to resolve their targets. */
+    transient BoxStore __boxStore;
+
     public String folderPath;
     public String displayName;
     public String tags;           // comma-separated tags
@@ -23,9 +28,11 @@ public class Folder {
     public long lastUpdatedAt;
 
     // Relations
-    public ToMany<SourceFile> files;
-    public ToOne<Folder> parentFolder;
-    public ToMany<Folder> subFolders;
+    @Backlink(to = "folder")
+    public ToMany<SourceFile> files = new ToMany<>(this, Folder_.files);
+    public ToOne<Folder> parentFolder = new ToOne<>(this, Folder_.parentFolder);
+    @Backlink(to = "parentFolder")
+    public ToMany<Folder> subFolders = new ToMany<>(this, Folder_.subFolders);
 
     public Folder() {}
 

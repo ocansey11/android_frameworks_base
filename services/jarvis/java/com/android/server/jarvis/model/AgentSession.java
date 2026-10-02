@@ -1,5 +1,7 @@
 package com.android.server.jarvis.model;
 
+import io.objectbox.BoxStore;
+import io.objectbox.annotation.Backlink;
 import io.objectbox.annotation.Entity;
 import io.objectbox.annotation.Id;
 import io.objectbox.relation.ToMany;
@@ -28,6 +30,9 @@ public class AgentSession {
 
     @Id
     public long id;
+
+    /** Set by the generated cursor; the relation fields below need it to resolve their targets. */
+    transient BoxStore __boxStore;
 
     /** UUID — the LangGraph thread_id equivalent. Unique per invocation. */
     public String sessionId;
@@ -78,5 +83,6 @@ public class AgentSession {
     public boolean consolidated;
 
     /** Full turn history — consumed by DreamWorker in Phase 6. */
-    public ToMany<AgentTurn> turns;
+    @Backlink(to = "session")
+    public ToMany<AgentTurn> turns = new ToMany<>(this, AgentSession_.turns);
 }

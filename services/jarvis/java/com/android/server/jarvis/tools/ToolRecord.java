@@ -1,5 +1,6 @@
 package com.android.server.jarvis.tools;
 
+import io.objectbox.BoxStore;
 import io.objectbox.annotation.Entity;
 import io.objectbox.annotation.Id;
 import io.objectbox.relation.ToOne;
@@ -26,6 +27,9 @@ public class ToolRecord {
 
     @Id
     public long id;
+
+    /** Set by the generated cursor; the relation fields below need it to resolve their targets. */
+    transient BoxStore __boxStore;
 
     /** e.g. check_visa_status */
     public String toolName;
@@ -75,7 +79,7 @@ public class ToolRecord {
     public boolean requiresConfirmation;
 
     /** FK → owning app. Phase 5 ToolNode uses this to know where to dispatch. */
-    public ToOne<AppRecord> app;
+    public ToOne<AppRecord> app = new ToOne<>(this, ToolRecord_.app);
 
     public ToolRecord() {}
 
