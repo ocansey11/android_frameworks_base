@@ -152,9 +152,11 @@ public class DreamWorker {
      */
     private String buildSessionSummary(AgentSession session) {
         if (session.turns == null || session.turns.isEmpty()) {
-            return session.originalQuery != null
-                    ? "User asked: " + session.originalQuery
-                    : null;
+            if (session.originalQuery == null) return null;
+            String summary = "User asked: " + session.originalQuery;
+            return session.finalAnswer != null
+                    ? summary + "\nFinal answer: " + truncate(session.finalAnswer, 200)
+                    : summary;
         }
 
         StringBuilder sb = new StringBuilder();
