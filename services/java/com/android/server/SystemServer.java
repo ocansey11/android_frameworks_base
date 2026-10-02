@@ -1703,6 +1703,20 @@ public final class SystemServer implements Dumpable {
             wm.onInitReady();
             t.traceEnd();
 
+
+            // Start Jarvis Service
+            t.traceBegin("StartJarvisService");
+            try {
+                Slog.i(TAG, "Jarvis Service");
+                mSystemServiceManager.startService(
+                    "com.android.server.jarvis.JarvisService"
+                );
+            } catch (Throwable e) {
+                reportWtf("starting Jarvis Service", e);
+            }
+            t.traceEnd();
+
+
             // Start receiving calls from SensorManager services. Start in a separate thread
             // because it need to connect to SensorManager. This has to start
             // after PHASE_WAIT_FOR_SENSOR_SERVICE is done.

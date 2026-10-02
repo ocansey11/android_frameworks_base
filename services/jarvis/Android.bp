@@ -1,0 +1,38 @@
+// Build file for the JarvisOS system service.
+//
+// Lives in services/jarvis/ (not under services/core/java/...) on purpose:
+// services.core globs services/core/java/**/*.java, so anything under that
+// tree is compiled into services.core, which has no ObjectBox on its classpath.
+//
+// ObjectBox _ classes (AppRecord_, ToolRecord_, SourceFile_, Folder_,
+// AccessLog_, TaskMemory_) and MyObjectBox are hand-written stubs.
+// They live in the same source directories and are picked up by the
+// existing srcs globs — no extra wiring needed here.
+//
+// TODO: replace stubs with processor-generated versions when ready.
+//   1. objectbox-processor-4.0.3.jar is in vendor/jarvisos/prebuilts/objectbox/
+//   2. Also needs objectbox-generator-4.0.3.jar + its deps (freemarker, kotlin-stdlib,
+//      moshi, okio, greenrobot-essentials) — see objectbox-generator-4.0.3.pom.
+//   3. Once all JARs are present, declare a java_plugin in the prebuilts Android.bp:
+//        java_plugin {
+//            name: "objectbox-annotation-processor",
+//            processor_class: "io.objectbox.processor.ObjectBoxProcessorShim",
+//            static_libs: ["objectbox-processor", "objectbox-generator", ...],
+//        }
+//   4. Add  plugins: ["objectbox-annotation-processor"]  to services.jarvis below.
+//   5. Delete the hand-written stubs — the processor replaces them.
+package {
+    default_applicable_licenses: ["frameworks_base_license"],
+}
+
+java_library_static {
+    name: "services.jarvis",
+    defaults: ["platform_service_defaults"],
+    srcs: ["java/**/*.java"],
+    static_libs: [
+        "objectbox-android",
+        "objectbox-java",
+        "androidx.work_work-runtime",
+    ],
+    libs: ["services.core"],
+}

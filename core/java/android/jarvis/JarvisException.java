@@ -1,0 +1,17 @@
+package android.jarvis;
+
+/**
+ * Exception thrown when JarvisOS service operations fail.
+ *
+ * @hide
+ */
+public class JarvisException extends Exception {
+
+    public JarvisException(String message) {
+        super(message);
+    }
+
+    public JarvisException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
