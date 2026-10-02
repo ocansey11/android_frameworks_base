@@ -862,6 +862,10 @@
     <!-- Used for long press power torch feature - automatic turn off on timeout -->
     <protected-broadcast android:name="com.android.server.policy.PhoneWindowManager.ACTION_TORCH_OFF" />
 
+    <!-- JarvisOS: tool calls to apps. Protected so that only the system can
+         send it; otherwise any app could trigger another app's tools. -->
+    <protected-broadcast android:name="com.jarvisos.TOOL" />
+
     <!-- ====================================================================== -->
     <!--                          RUNTIME PERMISSIONS                           -->
     <!-- ====================================================================== -->

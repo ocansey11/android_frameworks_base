@@ -6,7 +6,9 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Parcel;
 import android.os.ResultReceiver;
+import android.os.UserHandle;
 import android.util.Log;
 
 import com.android.server.jarvis.core.JarvisStore;
@@ -315,7 +317,12 @@ public class ToolDispatcher {
                 if (resultCode == RESULT_OK && resultData != null) {
                     resultRef.set(resultData.getString(EXTRA_TOOL_RESULT, ""));
                 } else {
-                    resultRef.set("Error: tool returned error code " + resultCode);
+                    // Pass the app's own explanation on: the model can only
+                    // correct a bad call if it is told what was wrong with it.
+                    String detail = resultData != null
+                            ? resultData.getString(EXTRA_TOOL_RESULT) : null;
+                    resultRef.set(detail != null && !detail.isEmpty()
+                            ? detail : "Error: tool returned error code " + resultCode);
                 }
                 latch.countDown();
             }
@@ -325,7 +332,7 @@ public class ToolDispatcher {
         intent.setComponent(new ComponentName(
                 call.app.packageName, call.tool.receiverClass));
         intent.putExtra("com.jarvisos.tool.name", call.tool.toolName);
-        intent.putExtra("com.jarvisos.tool.result_receiver", receiver);
+        intent.putExtra("com.jarvisos.tool.result_receiver", toPlainReceiver(receiver));
 
         // Pack tool arguments as individual Bundle extras
         try {
@@ -342,7 +349,7 @@ public class ToolDispatcher {
         }
 
         Log.i(TAG, "Dispatching tool: " + call.app.packageName + "/" + call.tool.toolName);
-        mContext.sendBroadcast(intent);
+        mContext.sendBroadcastAsUser(intent, UserHandle.CURRENT);
 
         try {
             boolean received = latch.await(DISPATCH_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -358,6 +365,23 @@ public class ToolDispatcher {
         String result = resultRef.get();
         Log.i(TAG, "Tool result received: " + call.tool.toolName);
         return result;
+    }
+
+    /**
+     * A ResultReceiver subclass is parcelled under its own class name, which
+     * the receiving app cannot load, so it crashes on reading the extra. Round
+     * trip it through a Parcel to get a plain ResultReceiver that still
+     * delivers to the original.
+     */
+    private static ResultReceiver toPlainReceiver(ResultReceiver receiver) {
+        Parcel parcel = Parcel.obtain();
+        try {
+            receiver.writeToParcel(parcel, 0);
+            parcel.setDataPosition(0);
+            return ResultReceiver.CREATOR.createFromParcel(parcel);
+        } finally {
+            parcel.recycle();
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -467,6 +491,7 @@ public class ToolDispatcher {
                 arguments = new JSONObject(argsJson);
             } catch (JSONException e) {
                 Log.w(TAG, "dispatchByName: invalid argsJson — " + argsJson);
+                return "Error: arguments are not valid JSON: " + argsJson;
             }
         }
 
