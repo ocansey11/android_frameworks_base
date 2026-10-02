@@ -45,13 +45,21 @@ public class CactusWrapper {
     // Max response buffer size for completions
     private static final int RESPONSE_BUFFER_SIZE = 8192;
 
+    // False when libcactus is absent (it is only built for arm64). init() and
+    // indexInit() then return 0, and every other call needs a handle from them,
+    // so no native method is reached without the library.
+    private static final boolean sLoaded;
+
     static {
+        boolean loaded = false;
         try {
             System.loadLibrary("cactus");
+            loaded = true;
             Log.i(TAG, "Cactus native library loaded");
         } catch (UnsatisfiedLinkError e) {
             Log.e(TAG, "Failed to load cactus native library", e);
         }
+        sLoaded = loaded;
     }
 
     // -------------------------------------------------------------------------
@@ -138,6 +146,10 @@ public class CactusWrapper {
             Log.e(TAG, "init: modelPath is null or empty");
             return 0L;
         }
+        if (!sLoaded) {
+            Log.e(TAG, "init: cactus native library not loaded");
+            return 0L;
+        }
         long handle = nativeInit(modelPath, corpusDir, cacheIndex);
         if (handle == 0L) {
             Log.e(TAG, "init failed: " + getLastError());
@@ -184,6 +196,10 @@ public class CactusWrapper {
      * @return index handle, 0 on failure
      */
     public static long indexInit(String indexDir, int embeddingDim) {
+        if (!sLoaded) {
+            Log.e(TAG, "indexInit: cactus native library not loaded");
+            return 0L;
+        }
         long handle = nativeIndexInit(indexDir, embeddingDim);
         if (handle == 0L) {
             Log.e(TAG, "indexInit failed: " + getLastError());
@@ -305,6 +321,7 @@ public class CactusWrapper {
     }
 
     public static String getLastError() {
+        if (!sLoaded) return "cactus native library not loaded";
         String err = nativeGetLastError();
         return err != null ? err : "unknown error";
     }

@@ -119,8 +119,10 @@ public class JarvisService extends SystemService {
                 mIsReady = true;
                 Log.i(TAG, "JarvisService initialized");
 
-            } catch (Exception e) {
-                Log.e(TAG, "JarvisService init failed", e);
+            } catch (Throwable t) {
+                // Throwable, not Exception: a missing native library surfaces as
+                // an Error, and an uncaught one on this thread kills system_server.
+                Log.e(TAG, "JarvisService init failed", t);
             }
         }, "JarvisServiceInit").start();
     }
