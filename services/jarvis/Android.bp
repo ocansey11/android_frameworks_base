@@ -29,10 +29,11 @@ java_library_static {
     name: "services.jarvis",
     defaults: ["platform_service_defaults"],
     srcs: ["java/**/*.java"],
+    // objectbox-android (LiveData/Paging helpers) is deliberately not linked:
+    // it needs androidx and nothing in the service uses it.
     static_libs: [
-        "objectbox-android",
         "objectbox-java",
-        "androidx.work_work-runtime",
+        "jsr305",
     ],
     libs: ["services.core"],
 }

@@ -3,13 +3,9 @@ package com.android.server.jarvis.agent;
 import android.content.Context;
 import android.util.Log;
 
-import androidx.work.Constraints;
-import androidx.work.ExistingPeriodicWorkPolicy;
-import androidx.work.PeriodicWorkRequest;
-import androidx.work.WorkManager;
-import androidx.work.Worker;
-import androidx.work.WorkerParameters;
 
+import com.android.server.jarvis.core.JarvisScheduler;
+import com.android.server.jarvis.core.JarvisScheduler.Result;
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
 import com.android.server.jarvis.inference.CactusWrapper;
@@ -47,13 +43,13 @@ import java.util.concurrent.TimeUnit;
  *   New facts are added. Old facts that contradict new observations are removed.
  *
  * Scheduling:
- *   - Runs once per day via WorkManager
+ *   - Runs once per day via JarvisScheduler (first run 1h after boot)
  *   - Requires CHARGING constraint — inference is hot, battery must be plugged
- *   - KEEP_EXISTING policy — one scheduled instance at a time
+ *   - One scheduled instance at a time
  *
  * Called from JarvisService.initializeAsync() after Phase 5 executor setup.
  */
-public class DreamWorker extends Worker {
+public class DreamWorker {
 
     private static final String TAG = "DreamWorker";
     private static final String WORK_NAME = "jarvis_dream_worker";
@@ -61,8 +57,10 @@ public class DreamWorker extends Worker {
     /** Max sessions to consolidate in one run — bounds execution time. */
     private static final int MAX_SESSIONS_PER_RUN = 10;
 
-    public DreamWorker(Context context, WorkerParameters params) {
-        super(context, params);
+    private final Context mContext;
+
+    public DreamWorker(Context context) {
+        mContext = context;
     }
 
     // -------------------------------------------------------------------------
@@ -70,20 +68,9 @@ public class DreamWorker extends Worker {
     // -------------------------------------------------------------------------
 
     public static void schedule(Context context) {
-        Constraints constraints = new Constraints.Builder()
-                .setRequiresCharging(true)
-                .build();
-
-        PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(
-                DreamWorker.class, 24, TimeUnit.HOURS)
-                .setConstraints(constraints)
-                .build();
-
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
-                work);
-
+        DreamWorker worker = new DreamWorker(context);
+        JarvisScheduler.schedulePeriodic(context, WORK_NAME,
+                1, 24, TimeUnit.HOURS, /* requiresCharging= */ true, worker::doWork);
         Log.i(TAG, "DreamWorker scheduled (24h, charging only)");
     }
 
@@ -91,7 +78,6 @@ public class DreamWorker extends Worker {
     // Worker
     // -------------------------------------------------------------------------
 
-    @Override
     public Result doWork() {
         if (!JarvisStore.isReady()) {
             Log.w(TAG, "Store not ready — will retry");

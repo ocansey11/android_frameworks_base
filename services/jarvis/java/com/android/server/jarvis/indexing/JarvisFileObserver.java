@@ -25,7 +25,7 @@ import java.util.concurrent.BlockingQueue;
  *   when their CREATE event fires.
  *
  * Does NOT index immediately — adds to IndexQueue.
- * WorkManager processes the queue 10 items at a time when charging/idle.
+ * JarvisIndexWorker processes the queue 10 items at a time while charging.
  */
 public class JarvisFileObserver {
 

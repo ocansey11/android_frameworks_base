@@ -4,6 +4,8 @@ import android.content.Context;
 import android.util.Log;
 
 import com.android.server.jarvis.core.IndexQueue;
+import com.android.server.jarvis.core.JarvisScheduler;
+import com.android.server.jarvis.core.JarvisScheduler.Result;
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
 import com.android.server.jarvis.inference.CactusWrapper;
@@ -12,13 +14,6 @@ import com.android.server.jarvis.model.DocumentChunk;
 import com.android.server.jarvis.model.SourceFile;
 import com.android.server.jarvis.model.SourceFile_;
 
-import androidx.annotation.NonNull;
-import androidx.work.Constraints;
-import androidx.work.ExistingPeriodicWorkPolicy;
-import androidx.work.PeriodicWorkRequest;
-import androidx.work.WorkManager;
-import androidx.work.Worker;
-import androidx.work.WorkerParameters;
 
 import java.io.FileInputStream;
 import java.security.MessageDigest;
@@ -26,7 +21,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * WorkManager job that drains IndexQueue and indexes pending files.
+ * Periodic job (JarvisScheduler) that drains IndexQueue and indexes pending files.
  *
  * Schedule: every 15 minutes, charging constraint only.
  * Batch:    up to 10 tasks per run to keep CPU time bounded.
@@ -47,9 +42,9 @@ import java.util.concurrent.TimeUnit;
  *   4. Delete SourceFile entity from ObjectBox
  *
  * Note: CactusWrapper calls are blocking — this worker already runs on a
- * background thread (WorkManager's executor), so no extra threading needed.
+ * background thread (JarvisScheduler's), so no extra threading needed.
  */
-public class JarvisIndexWorker extends Worker {
+public class JarvisIndexWorker {
 
     private static final String TAG       = "JarvisIndexWorker";
     private static final String WORK_NAME = "jarvis_index_worker";
@@ -58,16 +53,16 @@ public class JarvisIndexWorker extends Worker {
     // Model name in ModelRegistry — RAG document index
     private static final String MODEL_NAME = "rag";
 
-    public JarvisIndexWorker(@NonNull Context context, @NonNull WorkerParameters params) {
-        super(context, params);
+    private final Context mContext;
+
+    public JarvisIndexWorker(Context context) {
+        mContext = context;
     }
 
     // -------------------------------------------------------------------------
     // Worker entry point
     // -------------------------------------------------------------------------
 
-    @NonNull
-    @Override
     public Result doWork() {
         Log.i(TAG, "JarvisIndexWorker started");
 
@@ -283,18 +278,9 @@ public class JarvisIndexWorker extends Worker {
     // -------------------------------------------------------------------------
 
     public static void schedule(Context context) {
-        Constraints constraints = new Constraints.Builder()
-                .setRequiresCharging(true)
-                .build();
-
-        PeriodicWorkRequest request = new PeriodicWorkRequest.Builder(
-                JarvisIndexWorker.class, 15, TimeUnit.MINUTES)
-                .setConstraints(constraints)
-                .build();
-
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request);
-
+        JarvisIndexWorker worker = new JarvisIndexWorker(context);
+        JarvisScheduler.schedulePeriodic(context, WORK_NAME,
+                1, 15, TimeUnit.MINUTES, /* requiresCharging= */ true, worker::doWork);
         Log.i(TAG, "Scheduled (charging, 15min)");
     }
 }

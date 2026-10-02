@@ -33,7 +33,7 @@ import com.android.server.jarvis.tools.ToolScannerService;
  *   1. ObjectBox store
  *   2. ModelRegistry — "rag" + "tools" handle pairs
  *   3. FileObservers
- *   4. JarvisIndexWorker (WorkManager)
+ *   4. JarvisIndexWorker (JarvisScheduler)
  *   5. ToolScannerService + ToolDispatcher
  *
  * Query flow:
