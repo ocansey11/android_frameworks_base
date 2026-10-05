@@ -41,4 +41,11 @@ interface IToolRegistry {
      * Uses Cactus HNSW if available, falls back to keyword match.
      */
     String searchTools(String query);
+
+    /**
+     * Calls a tool by its exact name with a JSON object of arguments (null or
+     * empty for none). No model is involved. Blocks until the tool replies or
+     * times out; returns the tool's reply, or a string starting "Error:".
+     */
+    String callTool(String toolName, String argsJson);
 }

@@ -866,6 +866,13 @@
          send it; otherwise any app could trigger another app's tools. -->
     <protected-broadcast android:name="com.jarvisos.TOOL" />
 
+    <!-- JarvisOS: allows calling the "jarvis" and "jarvis_tools" binder
+         services (queries over the user's data, tool calls). Signature only:
+         held by the built-in Jarvis app, not grantable to other apps.
+         @hide -->
+    <permission android:name="android.permission.ACCESS_JARVIS_SERVICE"
+        android:protectionLevel="signature" />
+
     <!-- ====================================================================== -->
     <!--                          RUNTIME PERMISSIONS                           -->
     <!-- ====================================================================== -->

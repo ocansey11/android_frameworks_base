@@ -61,6 +61,10 @@ public class JarvisService extends SystemService {
     private static final String INDEX_DIR_TOOLS      = "/data/system/jarvis/index_tools";
     private static final int    EMBED_DIM            = 1024;
 
+    // Signature permission declared in core/res/AndroidManifest.xml. Every
+    // Binder call that reads user data or runs a tool requires it.
+    private static final String PERMISSION = "android.permission.ACCESS_JARVIS_SERVICE";
+
     // Primary user's shared storage. Spelled out rather than taken from
     // Environment.getExternalStorageDirectory(): that call needs the storage
     // service, which does not exist yet when system_server loads this class,
@@ -181,21 +185,12 @@ public class JarvisService extends SystemService {
             if (query == null || query.trim().isEmpty()) {
                 throw new IllegalArgumentException("Query cannot be null or empty");
             }
-            if (!mIsReady) {
-                return "Error: Jarvis service is still initializing. Please try again.";
-            }
-
-            Log.i(TAG, "processQuery: " + query.substring(0, Math.min(50, query.length())));
-
+            // Tools the query triggers run with the system's identity, not the caller's.
+            final long token = Binder.clearCallingIdentity();
             try {
-                if (mExecutor != null) {
-                    return mExecutor.execute(query);
-                }
-                // Executor not ready — service still initializing
-                return "Error: Jarvis service is still initializing. Please try again.";
-            } catch (Exception e) {
-                Log.e(TAG, "processQuery failed", e);
-                return "Error: " + e.getMessage();
+                return runQuery(query);
+            } finally {
+                Binder.restoreCallingIdentity(token);
             }
         }
 
@@ -235,6 +230,12 @@ public class JarvisService extends SystemService {
         }
 
         @Override
+        public String getStatus() {
+            enforceCallingPermission();
+            return statusJson();
+        }
+
+        @Override
         public String processQueryWithImage(String query, byte[] imageData) {
             enforceCallingPermission();
             if (!mIsReady) return "Error: Jarvis service is still initializing.";
@@ -261,9 +262,7 @@ public class JarvisService extends SystemService {
         }
 
         private void enforceCallingPermission() {
-            final int callingUid = Binder.getCallingUid();
-            Log.d(TAG, "Called by UID: " + callingUid);
-            // TODO: mContext.enforceCallingPermission("android.permission.ACCESS_JARVIS_SERVICE", "...");
+            mContext.enforceCallingOrSelfPermission(PERMISSION, "jarvis");
         }
 
         @Override
@@ -272,6 +271,40 @@ public class JarvisService extends SystemService {
             new JarvisShellCommand().exec(this, in, out, err, args, callback, resultReceiver);
         }
     };
+
+    /** The query path shared by the Binder call and the shell command. */
+    private String runQuery(String query) {
+        if (!mIsReady || mExecutor == null) {
+            return "Error: Jarvis service is still initializing. Please try again.";
+        }
+        Log.i(TAG, "processQuery: " + query.substring(0, Math.min(50, query.length())));
+        try {
+            return mExecutor.execute(query);
+        } catch (Exception e) {
+            Log.e(TAG, "processQuery failed", e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
+    private String statusJson() {
+        try {
+            org.json.JSONObject models = new org.json.JSONObject();
+            for (String name : new String[] {"rag", "tools", "primary"}) {
+                models.put(name, ModelRegistry.getInstance().getReady(name) != null);
+            }
+            final boolean store = JarvisStore.isReady();
+            org.json.JSONObject status = new org.json.JSONObject();
+            status.put("ready", mIsReady);
+            status.put("store", store);
+            status.put("models", models);
+            status.put("apps", store ? JarvisStore.box(AppRecord.class).count() : 0);
+            status.put("tools", store ? JarvisStore.box(ToolRecord.class).count() : 0);
+            return status.toString();
+        } catch (Exception e) {
+            Log.e(TAG, "statusJson() failed", e);
+            return "{}";
+        }
+    }
 
     // -------------------------------------------------------------------------
     // `adb shell cmd jarvis ...` — lets the service be exercised without a model
@@ -337,12 +370,9 @@ public class JarvisService extends SystemService {
                     return 0;
                 }
                 case "query":
-                    try {
-                        pw.println(mBinder.processQuery(getNextArgRequired()));
-                    } catch (android.os.RemoteException e) {
-                        // In-process call: cannot happen.
-                        pw.println("Error: " + e);
-                    }
+                    // Not mBinder.processQuery(): that checks the caller's
+                    // permission, and the caller here is the shell.
+                    pw.println(runQuery(getNextArgRequired()));
                     return 0;
                 default:
                     return handleDefaultCommands(cmd);
@@ -406,10 +436,24 @@ public class JarvisService extends SystemService {
             }
         }
 
+        @Override
+        public String callTool(String toolName, String argsJson) {
+            enforceCallingPermission();
+            if (mToolDispatcher == null) return "Error: tool dispatcher not started";
+            // The tool runs with the system's identity, not the caller's.
+            final long token = Binder.clearCallingIdentity();
+            try {
+                return mToolDispatcher.dispatchByName(toolName, argsJson);
+            } catch (Exception e) {
+                Log.e(TAG, "callTool() failed for " + toolName, e);
+                return "Error: " + e.getMessage();
+            } finally {
+                Binder.restoreCallingIdentity(token);
+            }
+        }
+
         private void enforceCallingPermission() {
-            final int callingUid = Binder.getCallingUid();
-            Log.d(TAG, "jarvis_tools called by UID: " + callingUid);
-            // TODO: mContext.enforceCallingPermission("android.permission.ACCESS_JARVIS_SERVICE", "...");
+            mContext.enforceCallingOrSelfPermission(PERMISSION, "jarvis_tools");
         }
     };
 }

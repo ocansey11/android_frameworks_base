@@ -28,6 +28,14 @@ interface IJarvisService {
     boolean isReady();
 
     /**
+     * Service state as a JSON object:
+     * {ready, store, models:{rag, tools, primary}, apps, tools}
+     * ready/store/models.* are booleans; apps and tools are record counts
+     * (0 when the store is not open).
+     */
+    String getStatus();
+
+    /**
      * Submit a query with an image attachment.
      * imageData is raw JPEG or PNG bytes. Pass null for text-only queries.
      *

@@ -21,9 +21,11 @@ public class JarvisManager {
 
     private static final String TAG          = "JarvisManager";
     private static final String SERVICE_NAME = "jarvis";
+    private static final String TOOLS_SERVICE_NAME = "jarvis_tools";
 
     private final Context mContext;
     private IJarvisService mService;
+    private IToolRegistry mToolRegistry;
 
     /** @hide — instantiated by SystemServiceRegistry, not by apps directly. */
     public JarvisManager(Context context) {
@@ -151,6 +153,58 @@ public class JarvisManager {
         }
     }
 
+    /**
+     * Service state as a JSON object string:
+     * {ready, store, models:{rag, tools, primary}, apps, tools}.
+     *
+     * @throws JarvisException if the service is unavailable
+     */
+    public String getStatus() throws JarvisException {
+        try {
+            return requireService().getStatus();
+        } catch (RemoteException e) {
+            Log.e(TAG, "getStatus() failed", e);
+            throw new JarvisException("Failed to communicate with Jarvis service", e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Tool registry API
+    // -------------------------------------------------------------------------
+
+    /**
+     * Every registered tool as a JSON array string (see IToolRegistry.listTools).
+     *
+     * @throws JarvisException if the service is unavailable
+     */
+    public String listTools() throws JarvisException {
+        try {
+            return requireToolRegistry().listTools();
+        } catch (RemoteException e) {
+            Log.e(TAG, "listTools() failed", e);
+            throw new JarvisException("Failed to communicate with Jarvis service", e);
+        }
+    }
+
+    /**
+     * Call a tool by its exact name. Blocks until the tool replies or times
+     * out (10 seconds), so do not call this on the main thread.
+     *
+     * @param toolName exact name from the registry
+     * @param argsJson JSON object of arguments, or null for none
+     * @return the tool's reply, or a string starting "Error:"
+     * @throws JarvisException if the service is unavailable
+     */
+    public String callTool(String toolName, String argsJson) throws JarvisException {
+        validateNotEmpty(toolName, "toolName");
+        try {
+            return requireToolRegistry().callTool(toolName, argsJson);
+        } catch (RemoteException e) {
+            Log.e(TAG, "callTool() failed", e);
+            throw new JarvisException("Failed to call tool", e);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
@@ -161,6 +215,17 @@ public class JarvisManager {
                     ServiceManager.getService(SERVICE_NAME));
         }
         return mService;
+    }
+
+    private IToolRegistry requireToolRegistry() throws JarvisException {
+        if (mToolRegistry == null) {
+            mToolRegistry = IToolRegistry.Stub.asInterface(
+                    ServiceManager.getService(TOOLS_SERVICE_NAME));
+        }
+        if (mToolRegistry == null) {
+            throw new JarvisException("Jarvis service not available — is JarvisOS running?");
+        }
+        return mToolRegistry;
     }
 
     private IJarvisService requireService() throws JarvisException {
