@@ -8,7 +8,7 @@ import com.android.server.jarvis.core.JarvisScheduler;
 import com.android.server.jarvis.core.JarvisScheduler.Result;
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
-import com.android.server.jarvis.inference.CactusWrapper;
+import com.android.server.jarvis.inference.Inference;
 import com.android.server.jarvis.model.AgentSession;
 import com.android.server.jarvis.model.AgentSession_;
 import com.android.server.jarvis.model.AgentTurn;
@@ -190,7 +190,7 @@ public class DreamWorker {
             userMsg.put("content", prompt);
             messages.put(userMsg);
 
-            return CactusWrapper.complete(modelHandle, messages.toString(), null, null);
+            return Inference.complete(modelHandle, messages.toString(), null);
         } catch (JSONException e) {
             Log.e(TAG, "extractFacts: failed to build messages", e);
             return null;

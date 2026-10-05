@@ -13,7 +13,7 @@ import android.os.Bundle;
 import android.util.Log;
 
 import com.android.server.jarvis.core.JarvisStore;
-import com.android.server.jarvis.inference.CactusWrapper;
+import com.android.server.jarvis.inference.Inference;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -97,7 +97,22 @@ public class ToolScannerService {
     public void setCactusHandles(long modelHandle, long indexHandle) {
         this.mModelHandle = modelHandle;
         this.mIndexHandle = indexHandle;
-        Log.i(TAG, "Cactus handles set — tool embeddings enabled");
+        if (modelHandle == 0L || indexHandle == 0L) {
+            Log.i(TAG, "No embedding model — tool search falls back to offering every tool");
+            return;
+        }
+        Log.i(TAG, "Embedding model set — indexing the registered tools");
+        // Tools are scanned at start-up, before any model is loaded, and a
+        // model may be installed or swapped later. Either way the index for
+        // this model has to be filled from what is already registered.
+        if (!JarvisStore.isReady()) return;
+        try {
+            for (ToolRecord tool : JarvisStore.box(ToolRecord.class).getAll()) {
+                embedAndStore(tool);
+            }
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Could not index the registered tools", e);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -250,14 +265,14 @@ public class ToolScannerService {
             return;
         }
 
-        float[] embedding = CactusWrapper.embed(mModelHandle, tool.rawDefinition);
+        float[] embedding = Inference.embed(mModelHandle, tool.rawDefinition);
         if (embedding == null) {
             Log.w(TAG, "Embed failed for tool: " + tool.toolName);
             return;
         }
 
         int cactusId = (int) tool.id;
-        int result   = CactusWrapper.indexAdd(
+        int result   = Inference.indexAdd(
                 mIndexHandle, cactusId, tool.rawDefinition, null, embedding);
 
         if (result == 0) {
@@ -290,7 +305,7 @@ public class ToolScannerService {
             List<ToolRecord> tools = app.tools;
             int[] cactusIds = new int[tools.size()];
             for (int i = 0; i < tools.size(); i++) cactusIds[i] = tools.get(i).cactusIndexId;
-            CactusWrapper.indexDelete(mIndexHandle, cactusIds);
+            Inference.indexDelete(mIndexHandle, cactusIds);
         }
 
         for (ToolRecord t : app.tools) toolBox.remove(t.id);

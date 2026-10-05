@@ -3,7 +3,7 @@ package com.android.server.jarvis.agent;
 import android.util.Log;
 
 import com.android.server.jarvis.core.ModelRegistry;
-import com.android.server.jarvis.inference.CactusWrapper;
+import com.android.server.jarvis.inference.Inference;
 import com.android.server.jarvis.model.AgentSession;
 import com.android.server.jarvis.model.AgentTurn;
 
@@ -74,11 +74,7 @@ public class RespondNode {
             // accumulatedContext (retrieved docs, tool results) goes second as session-specific detail.
             String fullContext = buildContext(userFacts, session.accumulatedContext);
 
-            return CactusWrapper.complete(
-                    modelHandle,
-                    messages.toString(),
-                    fullContext,
-                    null);
+            return Inference.complete(modelHandle, messages.toString(), fullContext);
 
         } catch (JSONException e) {
             Log.e(TAG, "RespondNode: failed to build messages", e);

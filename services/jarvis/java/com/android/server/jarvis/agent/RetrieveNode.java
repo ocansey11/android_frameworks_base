@@ -4,7 +4,7 @@ import android.util.Log;
 
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
-import com.android.server.jarvis.inference.CactusWrapper;
+import com.android.server.jarvis.inference.Inference;
 import com.android.server.jarvis.model.AgentSession;
 import com.android.server.jarvis.model.AgentTurn;
 import com.android.server.jarvis.model.DocumentChunk;
@@ -18,7 +18,7 @@ import java.util.List;
  * RetrieveNode — fetches relevant context from the RAG index.
  *
  * Stage 1: MetadataSearch (keyword) over ObjectBox — fast, no model call.
- * Stage 2: CactusWrapper.embed(query) + indexQuery — semantic HNSW search.
+ * Stage 2: Inference.embed(query) + indexQuery — semantic HNSW search.
  *
  * Results are appended to session.accumulatedContext.
  * RouterNode will not route to RetrieveNode again if accumulatedContext is non-empty,
@@ -58,9 +58,9 @@ public class RetrieveNode {
         ModelRegistry.ModelEntry ragModel = ModelRegistry.getInstance().getReady("rag");
         if (ragModel != null) {
             try {
-                float[] embedding = CactusWrapper.embed(ragModel.modelHandle, query);
+                float[] embedding = Inference.embed(ragModel.modelHandle, query);
                 if (embedding != null) {
-                    int[] chunkIds = CactusWrapper.indexQuery(
+                    int[] chunkIds = Inference.indexQuery(
                             ragModel.indexHandle, embedding, TOP_K);
                     if (chunkIds != null) {
                         for (int id : chunkIds) {

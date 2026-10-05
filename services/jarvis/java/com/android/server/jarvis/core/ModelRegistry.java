@@ -2,7 +2,7 @@ package com.android.server.jarvis.core;
 
 import android.util.Log;
 
-import com.android.server.jarvis.inference.CactusWrapper;
+import com.android.server.jarvis.inference.Inference;
 
 import java.io.File;
 import java.util.concurrent.ConcurrentHashMap;
@@ -128,19 +128,32 @@ public class ModelRegistry {
         mEntries.put(name, entry);
 
         // Initialize model handle
-        entry.modelHandle = CactusWrapper.init(modelPath, null, true);
+        entry.modelHandle = Inference.init(modelPath, true);
         if (entry.modelHandle == 0L) {
             Log.e(TAG, "Failed to init model for: " + name + " path=" + modelPath);
             return entry;
         }
 
+        // The index must have the model's own dimension. Ask the model rather
+        // than trust the caller: embedding models differ (384, 768, 1024...).
+        float[] probe = Inference.embed(entry.modelHandle, "dimension probe");
+        if (probe != null && probe.length != embeddingDim) {
+            Log.i(TAG, name + ": model gives " + probe.length + "-d embeddings, not "
+                    + embeddingDim);
+            embeddingDim = probe.length;
+            long handle = entry.modelHandle;
+            entry = new ModelEntry(name, modelPath, indexDir, embeddingDim, false);
+            entry.modelHandle = handle;
+            mEntries.put(name, entry);
+        }
+
         // Initialize index handle
         new File(indexDir).mkdirs();
-        entry.indexHandle = CactusWrapper.indexInit(indexDir, embeddingDim);
+        entry.indexHandle = Inference.indexInit(indexDir, embeddingDim);
         if (entry.indexHandle == 0L) {
             Log.e(TAG, "Failed to init index for: " + name + " dir=" + indexDir);
             // Model is up but index failed — destroy model to avoid half-ready state
-            CactusWrapper.destroy(entry.modelHandle);
+            Inference.destroy(entry.modelHandle);
             entry.modelHandle = 0L;
             return entry;
         }
@@ -169,7 +182,7 @@ public class ModelRegistry {
         ModelEntry entry = new ModelEntry(name, modelPath, null, -1, true);
         mEntries.put(name, entry);
 
-        entry.modelHandle = CactusWrapper.init(modelPath, null, false);
+        entry.modelHandle = Inference.init(modelPath, false);
         if (entry.modelHandle == 0L) {
             Log.e(TAG, "Failed to init chat model: " + name + " path=" + modelPath);
         } else {
@@ -216,11 +229,11 @@ public class ModelRegistry {
         ModelEntry entry = mEntries.remove(name);
         if (entry == null) return;
         if (!entry.chatOnly && entry.indexHandle != 0L) {
-            CactusWrapper.indexDestroy(entry.indexHandle);
+            Inference.indexDestroy(entry.indexHandle);
             entry.indexHandle = 0L;
         }
         if (entry.modelHandle != 0L) {
-            CactusWrapper.destroy(entry.modelHandle);
+            Inference.destroy(entry.modelHandle);
             entry.modelHandle = 0L;
         }
         Log.i(TAG, "Destroyed: " + name);

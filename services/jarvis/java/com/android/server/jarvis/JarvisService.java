@@ -17,6 +17,7 @@ import java.io.PrintWriter;
 import com.android.server.jarvis.core.IndexQueue;
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
+import com.android.server.jarvis.inference.Inference;
 import com.android.server.jarvis.indexing.JarvisFileObserver;
 import com.android.server.jarvis.indexing.JarvisIndexWorker;
 import com.android.server.jarvis.model.SourceFile;
@@ -55,8 +56,6 @@ public class JarvisService extends SystemService {
     private static final String TAG = "JarvisService";
 
     private static final String STORE_DIR            = "/data/system/jarvis/objectbox";
-    private static final String MODEL_PATH           = "/data/system/jarvis/models/embed.gguf";
-    private static final String GEMMA4_MODEL_PATH    = "/data/system/jarvis/models/gemma4.gguf";
     private static final String INDEX_DIR_RAG        = "/data/system/jarvis/index_rag";
     private static final String INDEX_DIR_TOOLS      = "/data/system/jarvis/index_tools";
     private static final int    EMBED_DIM            = 1024;
@@ -78,6 +77,7 @@ public class JarvisService extends SystemService {
 
     private final Context mContext;
     private volatile boolean mIsReady = false;
+    private volatile boolean mToolsStarted = false;
     private JarvisFileObserver[] mFileObservers;
     private ToolScannerService mToolScanner;
     private ToolDispatcher mToolDispatcher;
@@ -104,13 +104,7 @@ public class JarvisService extends SystemService {
 
                 // Step 2 — ModelRegistry
                 ModelRegistry registry = ModelRegistry.getInstance();
-                ModelRegistry.ModelEntry ragModel     = registry.register("rag",   MODEL_PATH, INDEX_DIR_RAG,   EMBED_DIM);
-                ModelRegistry.ModelEntry toolsModel   = registry.register("tools", MODEL_PATH, INDEX_DIR_TOOLS, EMBED_DIM);
-                ModelRegistry.ModelEntry primaryModel = registry.registerChatModel("primary", GEMMA4_MODEL_PATH);
-
-                if (!ragModel.isReady())     Log.w(TAG, "RAG model not ready — embeddings disabled");
-                if (!toolsModel.isReady())   Log.w(TAG, "Tools model not ready — tool embeddings disabled");
-                if (!primaryModel.isReady()) Log.w(TAG, "Primary model not ready — PlanNode/RespondNode will fall back to rag");
+                loadModels();
 
                 // Step 3 — FileObservers. Not fatal: tools and queries do not
                 // depend on file watching.
@@ -133,6 +127,7 @@ public class JarvisService extends SystemService {
                 if (tools != null) {
                     mToolScanner.setCactusHandles(tools.modelHandle, tools.indexHandle);
                 }
+                mToolsStarted = true;
 
                 // Step 6 — DreamWorker (nightly memory consolidation)
                 DreamWorker.schedule(mContext);
@@ -146,6 +141,56 @@ public class JarvisService extends SystemService {
                 Log.e(TAG, "JarvisService init failed", t);
             }
         }, "JarvisServiceInit").start();
+    }
+
+    /**
+     * Loads the selected engine's models: the embedding model twice ("rag" and
+     * "tools" keep separate indexes) and the chat model ("primary"). A missing
+     * model file is normal on a fresh device and only disables what needs it.
+     */
+    private void loadModels() {
+        ModelRegistry registry = ModelRegistry.getInstance();
+        // Each engine has its own index files: vectors from one engine's
+        // embedding model mean nothing to another's.
+        final String suffix = "_" + Inference.engine().name();
+        final String embed = Inference.modelPath("embed");
+        ModelRegistry.ModelEntry ragModel =
+                registry.register("rag", embed, INDEX_DIR_RAG + suffix, EMBED_DIM);
+        ModelRegistry.ModelEntry toolsModel =
+                registry.register("tools", embed, INDEX_DIR_TOOLS + suffix, EMBED_DIM);
+        ModelRegistry.ModelEntry primaryModel =
+                registry.registerChatModel("primary", Inference.modelPath("chat"));
+
+        Log.i(TAG, "Engine: " + Inference.engine().name());
+        if (!ragModel.isReady())     Log.w(TAG, "RAG model not ready — embeddings disabled");
+        if (!toolsModel.isReady())   Log.w(TAG, "Tools model not ready — tool embeddings disabled");
+        if (!primaryModel.isReady()) Log.w(TAG, "Primary model not ready — no answers until a chat model is installed");
+    }
+
+    /**
+     * Drops every loaded model and loads the models of {@code engineName}
+     * ("auto", "cactus", "llama"), or reloads the current engine's when null.
+     * Queries arriving meanwhile get "still initializing".
+     *
+     * @return false if the engine name is unknown
+     */
+    private synchronized boolean reloadModels(String engineName) {
+        final boolean wasReady = mIsReady;
+        mIsReady = false;
+        try {
+            ModelRegistry.getInstance().destroyAll();
+            if (engineName != null && !Inference.select(engineName)) return false;
+            loadModels();
+            ModelRegistry.ModelEntry tools = ModelRegistry.getInstance().getReady("tools");
+            if (mToolScanner != null && mToolsStarted) {
+                mToolScanner.setCactusHandles(
+                        tools != null ? tools.modelHandle : 0L,
+                        tools != null ? tools.indexHandle : 0L);
+            }
+            return true;
+        } finally {
+            mIsReady = wasReady;
+        }
     }
 
     private void startFileObservers() {
@@ -295,6 +340,7 @@ public class JarvisService extends SystemService {
             final boolean store = JarvisStore.isReady();
             org.json.JSONObject status = new org.json.JSONObject();
             status.put("ready", mIsReady);
+            status.put("engine", Inference.engine().name());
             status.put("store", store);
             status.put("models", models);
             status.put("apps", store ? JarvisStore.box(AppRecord.class).count() : 0);
@@ -324,6 +370,8 @@ public class JarvisService extends SystemService {
             switch (cmd) {
                 case "status":
                     pw.println("ready: " + mIsReady);
+                    pw.println("engine: " + Inference.engine().name()
+                            + (Inference.engine().isAvailable() ? "" : " (cannot run here)"));
                     pw.println("store: " + (JarvisStore.isReady() ? "open" : "not open"));
                     for (String name : new String[] {"rag", "tools", "primary"}) {
                         pw.println("model " + name + ": "
@@ -369,6 +417,59 @@ public class JarvisService extends SystemService {
                     pw.println(mToolDispatcher.dispatchByName(name, argsJson));
                     return 0;
                 }
+                case "engine": {
+                    String name = getNextArg();
+                    if (name == null) {
+                        pw.println("engine: " + Inference.engine().name());
+                        pw.println("built in: " + Inference.describeEngines());
+                        pw.println("chat model: " + Inference.modelPath("chat"));
+                        pw.println("embedding model: " + Inference.modelPath("embed"));
+                        return 0;
+                    }
+                    if (!reloadModels(name)) {
+                        pw.println("Error: unknown engine '" + name + "' (auto, cactus, llama)");
+                        return -1;
+                    }
+                    pw.println("engine: " + Inference.engine().name());
+                    return 0;
+                }
+                case "install-model": {
+                    // adb exec-in cmd jarvis install-model chat < model.gguf
+                    String role = getNextArgRequired();
+                    if (!"chat".equals(role) && !"embed".equals(role)) {
+                        pw.println("Error: role must be chat or embed");
+                        return -1;
+                    }
+                    java.io.File target = new java.io.File(Inference.modelPath(role));
+                    java.io.File tmp = new java.io.File(target.getPath() + ".tmp");
+                    target.getParentFile().mkdirs();
+                    long bytes = 0;
+                    try (java.io.InputStream in = getRawInputStream();
+                            java.io.OutputStream out = new java.io.FileOutputStream(tmp)) {
+                        byte[] buffer = new byte[1 << 16];
+                        for (int n; (n = in.read(buffer)) > 0; bytes += n) out.write(buffer, 0, n);
+                    } catch (java.io.IOException e) {
+                        tmp.delete();
+                        pw.println("Error: " + e.getMessage());
+                        return -1;
+                    }
+                    if (bytes == 0 || !tmp.renameTo(target)) {
+                        tmp.delete();
+                        pw.println("Error: nothing received, or could not write " + target);
+                        return -1;
+                    }
+                    pw.println("wrote " + bytes + " bytes to " + target);
+                    reloadModels(null);
+                    pw.println("model " + ("chat".equals(role) ? "primary" : "rag") + ": "
+                            + (ModelRegistry.getInstance().getReady(
+                                    "chat".equals(role) ? "primary" : "rag") != null
+                                    ? "ready" : "not ready"));
+                    return 0;
+                }
+                case "reload":
+                    reloadModels(null);
+                    pw.println("models reloaded for engine " + Inference.engine().name());
+                    return 0;
                 case "query":
                     // Not mBinder.processQuery(): that checks the caller's
                     // permission, and the caller here is the shell.
@@ -388,6 +489,10 @@ public class JarvisService extends SystemService {
             pw.println("  describe NAME       a tool's stored definition as JSON");
             pw.println("  tool NAME [JSON]    call a tool directly with JSON arguments");
             pw.println("  query TEXT          same as IJarvisService.processQuery");
+            pw.println("  engine [NAME]       show the inference engine, or switch to auto|cactus|llama");
+            pw.println("  install-model ROLE  store the file on standard input as the chat or embed model,");
+            pw.println("                      then reload (adb exec-in cmd jarvis install-model chat < m.gguf)");
+            pw.println("  reload              load the engine's model files again");
         }
     }
 

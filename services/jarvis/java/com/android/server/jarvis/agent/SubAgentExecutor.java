@@ -141,7 +141,7 @@ public class SubAgentExecutor {
         s.accumulatedContext = mParentContext; // inherit parent context
         s.turnCount         = 0;
         s.maxTurns          = SUB_AGENT_MAX_TURNS;
-        s.status            = "PLANNING";
+        s.status            = "NEW";   // see JarvisExecutor.createSession
         s.createdAt         = System.currentTimeMillis();
         s.lastUpdatedAt     = s.createdAt;
         // Tag with parent ID for traceability — stored in currentPlan field

@@ -40,7 +40,7 @@ public class JarvisExecutor {
     private final RouterNode   mRouter;
 
     public JarvisExecutor(ToolDispatcher toolDispatcher) {
-        mPlanNode     = new PlanNode();
+        mPlanNode     = new PlanNode(toolDispatcher);
         mRetrieveNode = new RetrieveNode();
         mToolNode     = new ToolNode(toolDispatcher);
         mRespondNode  = new RespondNode();
@@ -61,6 +61,9 @@ public class JarvisExecutor {
         persistSession(session);
 
         String lastOutput = null;
+        // The planner's own words, when they already answer the query: no
+        // tool asked for and nothing retrieved since. Saves a second model call.
+        String planAnswer = null;
 
         while (true) {
             RouterNode.Next next = mRouter.route(session, lastOutput);
@@ -76,6 +79,7 @@ public class JarvisExecutor {
                     }
                     session.turnCount++;
                     persistSession(session);
+                    planAnswer = lastOutput;
                     break;
 
                 case RETRIEVE:
@@ -84,6 +88,7 @@ public class JarvisExecutor {
                     if (lastOutput == null) lastOutput = "";
                     session.turnCount++;
                     persistSession(session);
+                    planAnswer = null;
                     break;
 
                 case TOOL_CALL:
@@ -95,9 +100,16 @@ public class JarvisExecutor {
                     if (lastOutput == null) lastOutput = "";
                     session.turnCount++;
                     persistSession(session);
+                    planAnswer = lastOutput;
                     break;
 
                 case RESPOND:
+                    if (planAnswer != null && !planAnswer.trim().isEmpty()) {
+                        session.finalAnswer = planAnswer;
+                        session.status = "DONE";
+                        persistSession(session);
+                        return planAnswer;
+                    }
                     String answer = mRespondNode.execute(session);
                     persistSession(session);
                     if (answer != null) return answer;
@@ -127,7 +139,9 @@ public class JarvisExecutor {
         s.originalQuery = query;
         s.turnCount  = 0;
         s.maxTurns   = MAX_TURNS;
-        s.status     = "PLANNING";
+        // Not "PLANNING": RouterNode sends a session to PlanNode first only
+        // while it has not been planned, and PlanNode sets that status itself.
+        s.status     = "NEW";
         s.createdAt  = System.currentTimeMillis();
         s.lastUpdatedAt = s.createdAt;
         return s;

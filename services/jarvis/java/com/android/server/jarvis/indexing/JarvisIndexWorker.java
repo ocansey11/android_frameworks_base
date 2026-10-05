@@ -8,7 +8,7 @@ import com.android.server.jarvis.core.JarvisScheduler;
 import com.android.server.jarvis.core.JarvisScheduler.Result;
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
-import com.android.server.jarvis.inference.CactusWrapper;
+import com.android.server.jarvis.inference.Inference;
 import com.android.server.jarvis.model.Chunk;
 import com.android.server.jarvis.model.DocumentChunk;
 import com.android.server.jarvis.model.SourceFile;
@@ -37,7 +37,7 @@ import java.util.concurrent.TimeUnit;
  *
  * REMOVE task pipeline:
  *   1. Look up SourceFile by filePath in ObjectBox
- *   2. For each DocumentChunk: call CactusWrapper.indexDelete()
+ *   2. For each DocumentChunk: call Inference.indexDelete()
  *   3. Delete DocumentChunk entities from ObjectBox
  *   4. Delete SourceFile entity from ObjectBox
  *
@@ -168,7 +168,7 @@ public class JarvisIndexWorker {
                 continue;
             }
 
-            float[] embedding = CactusWrapper.embed(model.modelHandle, chunk.getText());
+            float[] embedding = Inference.embed(model.modelHandle, chunk.getText());
             if (embedding == null) {
                 Log.w(TAG, "Embed failed for chunk " + chunk.getPosition()
                         + " of " + task.filePath);
@@ -176,7 +176,7 @@ public class JarvisIndexWorker {
             }
 
             int cactusId = (int) (existing.id * 10000 + chunk.getPosition());
-            int addResult = CactusWrapper.indexAdd(
+            int addResult = Inference.indexAdd(
                     model.indexHandle, cactusId, chunk.getText(), null, embedding);
 
             if (addResult != 0) {
@@ -232,7 +232,7 @@ public class JarvisIndexWorker {
                 ids[i] = chunks.get(i).cactusIndexId;
             }
             if (ids.length > 0) {
-                CactusWrapper.indexDelete(model.indexHandle, ids);
+                Inference.indexDelete(model.indexHandle, ids);
             }
             for (DocumentChunk c : chunks) {
                 chunkBox.remove(c.id);

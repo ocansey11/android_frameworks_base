@@ -13,7 +13,8 @@ import android.util.Log;
 
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
-import com.android.server.jarvis.inference.CactusWrapper;
+import com.android.server.jarvis.inference.Completion;
+import com.android.server.jarvis.inference.Inference;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -63,6 +64,9 @@ public class ToolDispatcher {
     public static final String EXTRA_TOOL_RESULT = "com.jarvisos.tool.result";
 
     /** ResultReceiver result code for success. */
+    /** Every tool definition costs prompt tokens; a small model's context is short. */
+    private static final int MAX_OFFERED_TOOLS = 24;
+
     public static final int RESULT_OK    = 0;
     public static final int RESULT_ERROR = 1;
 
@@ -126,13 +130,13 @@ public class ToolDispatcher {
             return metadataSearch(query);
         }
 
-        float[] queryEmbedding = CactusWrapper.embed(toolsModel.modelHandle, query);
+        float[] queryEmbedding = Inference.embed(toolsModel.modelHandle, query);
         if (queryEmbedding == null) {
             Log.w(TAG, "Failed to embed query — falling back to metadata search");
             return metadataSearch(query);
         }
 
-        int[] hitIds = CactusWrapper.indexQuery(toolsModel.indexHandle, queryEmbedding, TOP_K);
+        int[] hitIds = Inference.indexQuery(toolsModel.indexHandle, queryEmbedding, TOP_K);
         if (hitIds == null || hitIds.length == 0) return results;
 
         // Resolve cactusIndexIds → ToolRecords
@@ -218,9 +222,10 @@ public class ToolDispatcher {
      * Returns null if the model doesn't select a tool.
      */
     private ToolCall selectTool(String query, String toolsJson, List<ToolRecord> candidates) {
-        ModelRegistry.ModelEntry ragModel = ModelRegistry.getInstance().getReady("rag");
+        ModelRegistry.ModelEntry ragModel = ModelRegistry.getInstance().getReady("primary");
+        if (ragModel == null) ragModel = ModelRegistry.getInstance().getReady("rag");
         if (ragModel == null) {
-            Log.w(TAG, "RAG model not ready — cannot select tool");
+            Log.w(TAG, "No chat model ready — cannot select tool");
             return null;
         }
 
@@ -231,12 +236,11 @@ public class ToolDispatcher {
             userMsg.put("content", query);
             messages.put(userMsg);
 
-            String response = CactusWrapper.complete(
+            Completion completion = Inference.completeWithTools(
                     ragModel.modelHandle, messages.toString(), null, toolsJson);
+            if (completion == null || !completion.hasToolCall()) return null;
 
-            if (response == null) return null;
-
-            return parseToolCall(response, candidates);
+            return matchToolCall(completion, candidates);
 
         } catch (JSONException e) {
             Log.e(TAG, "selectTool: failed to build messages", e);
@@ -244,40 +248,42 @@ public class ToolDispatcher {
         }
     }
 
-    /**
-     * Parse the model's tool_call response.
-     * Expects JSON like: {"tool_call":{"name":"check_visa_status","arguments":{"passport_number":"AB123"}}}
-     *
-     * Falls back to name-matching if format differs.
-     */
-    private ToolCall parseToolCall(String response, List<ToolRecord> candidates) {
-        try {
-            JSONObject json = new JSONObject(response);
-            JSONObject toolCallJson = json.optJSONObject("tool_call");
-            if (toolCallJson == null) return null;
-
-            String name = toolCallJson.optString("name");
-            JSONObject arguments = toolCallJson.optJSONObject("arguments");
-
-            // Match name → ToolRecord → AppRecord
-            for (ToolRecord tool : candidates) {
-                if (tool.toolName.equals(name)) {
-                    AppRecord app = tool.app.getTarget();
-                    if (app == null) {
-                        Log.w(TAG, "ToolRecord has no AppRecord: " + name);
-                        return null;
-                    }
-                    return new ToolCall(tool, app, arguments != null ? arguments : new JSONObject());
+    /** Finds the candidate the model named. Null if it named something else. */
+    private ToolCall matchToolCall(Completion completion, List<ToolRecord> candidates) {
+        for (ToolRecord tool : candidates) {
+            if (tool.toolName.equals(completion.toolName)) {
+                AppRecord app = tool.app.getTarget();
+                if (app == null) {
+                    Log.w(TAG, "ToolRecord has no AppRecord: " + completion.toolName);
+                    return null;
                 }
+                return new ToolCall(tool, app, completion.toolArguments);
             }
-
-            Log.w(TAG, "Model selected unknown tool: " + name);
-            return null;
-
-        } catch (JSONException e) {
-            Log.w(TAG, "parseToolCall: response not valid JSON — " + response);
-            return null;
         }
+        Log.w(TAG, "Model selected unknown tool: " + completion.toolName);
+        return null;
+    }
+
+    /**
+     * The tools worth offering the model for this query, as the JSON array an
+     * engine takes: the closest matches when an embedding model is loaded,
+     * otherwise every registered tool up to {@link #MAX_OFFERED_TOOLS}.
+     *
+     * @return the JSON array, or null if there is nothing to offer
+     */
+    public String toolsJsonFor(String query) {
+        if (!JarvisStore.isReady()) return null;
+        List<ToolRecord> candidates = new ArrayList<>();
+        if (ModelRegistry.getInstance().getReady("tools") != null) {
+            candidates = semanticSearch(query);
+        }
+        if (candidates.isEmpty()) {
+            // No embeddings to rank with. Keyword matching on a whole sentence
+            // finds nothing, so offer them all and let the model choose.
+            List<ToolRecord> all = JarvisStore.box(ToolRecord.class).getAll();
+            candidates = all.subList(0, Math.min(all.size(), MAX_OFFERED_TOOLS));
+        }
+        return candidates.isEmpty() ? null : buildToolsJson(candidates);
     }
 
     // -------------------------------------------------------------------------

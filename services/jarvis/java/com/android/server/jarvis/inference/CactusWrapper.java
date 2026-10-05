@@ -62,6 +62,11 @@ public class CactusWrapper {
         sLoaded = loaded;
     }
 
+    /** False when libcactus could not be loaded (it is only built for arm64). */
+    static boolean isLoaded() {
+        return sLoaded;
+    }
+
     // -------------------------------------------------------------------------
     // Native method declarations — implemented in cactus_ffi.h / cactus_jni.cpp
     // -------------------------------------------------------------------------
