@@ -286,6 +286,34 @@ public class ToolDispatcher {
         return candidates.isEmpty() ? null : buildToolsJson(candidates);
     }
 
+    /**
+     * Every registered tool in OpenAI function format, for a model that does
+     * its own retrieval (Needle). Null if the store is closed or empty.
+     */
+    public String allToolsJson() {
+        if (!JarvisStore.isReady()) return null;
+        List<ToolRecord> all = new ArrayList<>(JarvisStore.box(ToolRecord.class).getAll());
+        // A fixed order: the model's confidence shifts with the order tools are
+        // listed in, so it must not depend on the order they were registered.
+        all.sort((x, y) -> String.valueOf(x.toolName).compareTo(String.valueOf(y.toolName)));
+        String flat = all.isEmpty() ? null : buildToolsJson(all);
+        if (flat == null) return null;
+        try {
+            JSONArray definitions = new JSONArray(flat);
+            JSONArray tools = new JSONArray();
+            for (int i = 0; i < definitions.length(); i++) {
+                JSONObject tool = new JSONObject();
+                tool.put("type", "function");
+                tool.put("function", definitions.getJSONObject(i));
+                tools.put(tool);
+            }
+            return tools.toString();
+        } catch (JSONException e) {
+            Log.e(TAG, "allToolsJson failed", e);
+            return null;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Dispatch
     // -------------------------------------------------------------------------

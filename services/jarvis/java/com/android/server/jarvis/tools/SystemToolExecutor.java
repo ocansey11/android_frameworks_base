@@ -70,7 +70,7 @@ import java.util.List;
  *     toggle_wifi             — WifiManager enable/disable
  *     toggle_bluetooth        — BluetoothAdapter enable/disable
  *     set_brightness          — Settings.System screen brightness
- *     set_flashlight          — CameraManager torch mode
+ *     set_flashlight          — CameraManager torch mode, confirmed by its callback
  *
  *   App launching
  *     open_app                — startActivity via getLaunchIntentForPackage
@@ -78,6 +78,9 @@ import java.util.List;
 public class SystemToolExecutor {
 
     private static final String TAG = "SystemToolExecutor";
+
+    /** How long to wait for the camera service to confirm a torch change. */
+    private static final long TORCH_CONFIRM_MS = 2_000;
 
     /**
      * Execute a system tool.
@@ -523,7 +526,31 @@ public class SystemToolExecutor {
             }
             if (torchCameraId == null) return "Error: no torch found on this device";
 
-            cm.setTorchMode(torchCameraId, enable);
+            // setTorchMode only asks; the camera service reports the change.
+            // Wait for that report so the reply says what the torch did.
+            final String cameraId = torchCameraId;
+            final java.util.concurrent.CountDownLatch changed =
+                    new java.util.concurrent.CountDownLatch(1);
+            android.hardware.camera2.CameraManager.TorchCallback callback =
+                    new android.hardware.camera2.CameraManager.TorchCallback() {
+                        @Override
+                        public void onTorchModeChanged(String id, boolean enabled) {
+                            if (id.equals(cameraId) && enabled == enable) changed.countDown();
+                        }
+                    };
+            cm.registerTorchCallback(callback,
+                    com.android.internal.os.BackgroundThread.getHandler());
+            try {
+                cm.setTorchMode(cameraId, enable);
+                if (!changed.await(TORCH_CONFIRM_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    return "Error: the flashlight did not turn " + (enable ? "on" : "off");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return "Error: interrupted while switching the flashlight";
+            } finally {
+                cm.unregisterTorchCallback(callback);
+            }
             return "Flashlight " + (enable ? "on" : "off");
 
         } catch (android.hardware.camera2.CameraAccessException e) {

@@ -18,6 +18,8 @@ import com.android.server.jarvis.core.IndexQueue;
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
 import com.android.server.jarvis.inference.Inference;
+import com.android.server.jarvis.inference.Needle;
+import com.android.server.jarvis.inference.Pcm;
 import com.android.server.jarvis.indexing.JarvisFileObserver;
 import com.android.server.jarvis.indexing.JarvisIndexWorker;
 import com.android.server.jarvis.model.SourceFile;
@@ -25,6 +27,7 @@ import com.android.server.jarvis.model.SourceFile_;
 import com.android.server.jarvis.agent.DreamWorker;
 import com.android.server.jarvis.agent.JarvisExecutor;
 import com.android.server.jarvis.tools.AppRecord;
+import com.android.server.jarvis.tools.FastPath;
 import com.android.server.jarvis.tools.ToolDispatcher;
 import com.android.server.jarvis.tools.ToolRecord;
 import com.android.server.jarvis.tools.ToolScannerService;
@@ -82,6 +85,7 @@ public class JarvisService extends SystemService {
     private ToolScannerService mToolScanner;
     private ToolDispatcher mToolDispatcher;
     private JarvisExecutor mExecutor;
+    private FastPath mFastPath;
 
     public JarvisService(Context context) {
         super(context);
@@ -121,6 +125,7 @@ public class JarvisService extends SystemService {
                 mToolScanner    = new ToolScannerService(mContext);
                 mToolDispatcher = new ToolDispatcher(mContext);
                 mExecutor       = new JarvisExecutor(mToolDispatcher);
+                mFastPath       = new FastPath(mToolDispatcher);
                 mToolScanner.start();
 
                 ModelRegistry.ModelEntry tools = registry.getReady("tools");
@@ -165,6 +170,9 @@ public class JarvisService extends SystemService {
         if (!ragModel.isReady())     Log.w(TAG, "RAG model not ready — embeddings disabled");
         if (!toolsModel.isReady())   Log.w(TAG, "Tools model not ready — tool embeddings disabled");
         if (!primaryModel.isReady()) Log.w(TAG, "Primary model not ready — no answers until a chat model is installed");
+
+        // The small tool-calling and speech models, whichever engine is selected.
+        Needle.loadModels();
     }
 
     /**
@@ -295,15 +303,17 @@ public class JarvisService extends SystemService {
         @Override
         public String processQueryWithAudio(String query, byte[] pcmData) {
             enforceCallingPermission();
-            if (!mIsReady) return "Error: Jarvis service is still initializing.";
-            // TODO: pass pcmData to CactusWrapper.transcribe() once Gemma 4 audio
-            // support is confirmed stable in Cactus. Currently Whisper path only.
-            // For now: transcribe if pcmData is provided + audio model is ready,
-            // otherwise fall through to text query.
-            Log.i(TAG, "processQueryWithAudio: pcm=" + (pcmData != null
-                    ? pcmData.length + " bytes" : "null") + " — falling back to text query");
-            if (mExecutor != null) return mExecutor.execute(query);
-            return "Error: executor not ready";
+            // Tools the request triggers run with the system's identity, not the caller's.
+            final long token = Binder.clearCallingIdentity();
+            try {
+                if (pcmData == null || pcmData.length < 2) {
+                    return query != null && !query.trim().isEmpty()
+                            ? runQuery(query) : "Error: no audio";
+                }
+                return runSpokenQuery(Pcm.fromPcm16(pcmData), null);
+            } finally {
+                Binder.restoreCallingIdentity(token);
+            }
         }
 
         private void enforceCallingPermission() {
@@ -324,9 +334,57 @@ public class JarvisService extends SystemService {
         }
         Log.i(TAG, "processQuery: " + query.substring(0, Math.min(50, query.length())));
         try {
+            FastPath.Outcome fast = mFastPath.tryText(query);
+            if (fast.handled) return fast.reply;
             return mExecutor.execute(query);
         } catch (Exception e) {
             Log.e(TAG, "processQuery failed", e);
+            return "Error: " + e.getMessage();
+        }
+    }
+
+    /**
+     * The spoken-query path shared by the Binder call and the shell command:
+     * the fast path hears the request and runs the tools if it is sure;
+     * otherwise what was heard goes to the agent loop as a typed request would.
+     * Audio is used for the transcript only and is not kept.
+     *
+     * @param pcm     16 kHz mono samples in [-1, 1]
+     * @param details if not null, receives what was heard and how long each step took
+     */
+    private String runSpokenQuery(float[] pcm, PrintWriter details) {
+        if (!mIsReady || mExecutor == null) {
+            return "Error: Jarvis service is still initializing. Please try again.";
+        }
+        if (!Needle.canHear()) {
+            return "Error: no speech model installed (cmd jarvis install-model whistle)";
+        }
+        try {
+            final long start = System.nanoTime();
+            FastPath.Outcome fast = mFastPath.tryAudio(pcm);
+            String reply;
+            if (fast.handled) {
+                reply = fast.reply;
+            } else if (fast.transcript == null || fast.transcript.trim().isEmpty()) {
+                reply = "Error: I did not hear anything.";
+            } else {
+                reply = mExecutor.execute(fast.transcript);
+            }
+            final long totalMs = (System.nanoTime() - start) / 1_000_000;
+            Log.i(TAG, "spoken query: " + totalMs + " ms, fast path "
+                    + (fast.handled ? "handled it" : "passed"));
+            if (details != null) {
+                details.println("heard: " + fast.transcript);
+                details.println("calls: " + (fast.calls.isEmpty() ? "none" : fast.calls));
+                details.println("confidence: " + fast.confidence);
+                details.println("path: " + (fast.handled ? "fast" : "agent loop"));
+                details.println("hear+decide ms: " + fast.decideMs);
+                details.println("tool ms: " + fast.toolMs);
+                details.println("total ms: " + totalMs);
+            }
+            return reply;
+        } catch (Exception e) {
+            Log.e(TAG, "spoken query failed", e);
             return "Error: " + e.getMessage();
         }
     }
@@ -343,6 +401,8 @@ public class JarvisService extends SystemService {
             status.put("engine", Inference.engine().name());
             status.put("store", store);
             status.put("models", models);
+            status.put("fastTools", Needle.canRoute());
+            status.put("speech", Needle.canHear());
             status.put("apps", store ? JarvisStore.box(AppRecord.class).count() : 0);
             status.put("tools", store ? JarvisStore.box(ToolRecord.class).count() : 0);
             return status.toString();
@@ -378,6 +438,8 @@ public class JarvisService extends SystemService {
                                 + (ModelRegistry.getInstance().getReady(name) != null
                                         ? "ready" : "not ready"));
                     }
+                    pw.println("needle: " + Needle.describe()
+                            + (FastPath.isEnabled() ? "" : " (fast path off)"));
                     if (JarvisStore.isReady()) {
                         pw.println("apps: " + JarvisStore.box(AppRecord.class).count());
                         pw.println("tools: " + JarvisStore.box(ToolRecord.class).count());
@@ -436,11 +498,13 @@ public class JarvisService extends SystemService {
                 case "install-model": {
                     // adb exec-in cmd jarvis install-model chat < model.gguf
                     String role = getNextArgRequired();
-                    if (!"chat".equals(role) && !"embed".equals(role)) {
-                        pw.println("Error: role must be chat or embed");
+                    final boolean small = "needle".equals(role) || "whistle".equals(role);
+                    if (!small && !"chat".equals(role) && !"embed".equals(role)) {
+                        pw.println("Error: role must be chat, embed, needle or whistle");
                         return -1;
                     }
-                    java.io.File target = new java.io.File(Inference.modelPath(role));
+                    java.io.File target = new java.io.File(
+                            small ? Needle.modelPath(role) : Inference.modelPath(role));
                     java.io.File tmp = new java.io.File(target.getPath() + ".tmp");
                     target.getParentFile().mkdirs();
                     long bytes = 0;
@@ -459,6 +523,11 @@ public class JarvisService extends SystemService {
                         return -1;
                     }
                     pw.println("wrote " + bytes + " bytes to " + target);
+                    if (small) {
+                        Needle.loadModels();
+                        pw.println("needle: " + Needle.describe());
+                        return 0;
+                    }
                     reloadModels(null);
                     pw.println("model " + ("chat".equals(role) ? "primary" : "rag") + ": "
                             + (ModelRegistry.getInstance().getReady(
@@ -475,6 +544,45 @@ public class JarvisService extends SystemService {
                     // permission, and the caller here is the shell.
                     pw.println(runQuery(getNextArgRequired()));
                     return 0;
+                case "voice": {
+                    // adb shell -T cmd jarvis voice < clip.wav
+                    float[] pcm;
+                    try (java.io.InputStream in = getRawInputStream()) {
+                        pcm = Pcm.fromWav(in.readAllBytes());
+                    } catch (java.io.IOException | IllegalArgumentException e) {
+                        pw.println("Error: " + e.getMessage());
+                        return -1;
+                    }
+                    pw.println("audio seconds: " + pcm.length / (float) Pcm.SAMPLE_RATE);
+                    String reply = runSpokenQuery(pcm, pw);
+                    pw.println("reply: " + reply);
+                    return 0;
+                }
+                case "route": {
+                    String text = getNextArgRequired();
+                    if (mFastPath == null || !Needle.canRoute()) {
+                        pw.println("Error: tool-calling model not installed "
+                                + "(cmd jarvis install-model needle)");
+                        return -1;
+                    }
+                    FastPath.Outcome outcome = mFastPath.preview(text);
+                    pw.println("calls: " + (outcome.calls.isEmpty() ? "none" : outcome.calls));
+                    pw.println("confidence: " + outcome.confidence);
+                    pw.println("decide ms: " + outcome.decideMs);
+                    return 0;
+                }
+                case "fast": {
+                    String value = getNextArg();
+                    if ("on".equals(value) || "off".equals(value)) {
+                        android.os.SystemProperties.set(
+                                FastPath.PROP_ENABLED, "on".equals(value) ? "1" : "0");
+                    } else if (value != null) {
+                        pw.println("Error: fast takes on or off");
+                        return -1;
+                    }
+                    pw.println("fast path: " + (FastPath.isEnabled() ? "on" : "off"));
+                    return 0;
+                }
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -490,8 +598,13 @@ public class JarvisService extends SystemService {
             pw.println("  tool NAME [JSON]    call a tool directly with JSON arguments");
             pw.println("  query TEXT          same as IJarvisService.processQuery");
             pw.println("  engine [NAME]       show the inference engine, or switch to auto|cactus|llama");
-            pw.println("  install-model ROLE  store the file on standard input as the chat or embed model,");
-            pw.println("                      then reload (adb exec-in cmd jarvis install-model chat < m.gguf)");
+            pw.println("  install-model ROLE  store the file on standard input as the chat, embed, needle or");
+            pw.println("                      whistle model, then load it");
+            pw.println("                      (adb shell -T cmd jarvis install-model chat < m.gguf)");
+            pw.println("  voice               answer the WAV file on standard input as a spoken request,");
+            pw.println("                      and show what was heard and how long each step took");
+            pw.println("  route TEXT          show the tool calls the fast path would make, without making them");
+            pw.println("  fast [on|off]       show or switch the fast path (tool calls without the chat model)");
             pw.println("  reload              load the engine's model files again");
         }
     }
