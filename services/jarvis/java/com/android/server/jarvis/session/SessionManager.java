@@ -20,6 +20,7 @@ import com.android.server.jarvis.core.ModelRegistry;
 import com.android.server.jarvis.inference.Inference;
 import com.android.server.jarvis.tools.ToolDispatcher;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -74,6 +75,10 @@ public final class SessionManager extends IJarvisSessionService.Stub
     private Session mActive;            // guarded by mLock
     private volatile String mLastTurn;  // trace of the last turn, JSON
     private volatile String mLastEnd;   // why the last session ended
+    /** The last session that ended, as {@link #describe} wrote it, for the Jarvis app. */
+    private volatile JSONObject mLastSession;
+    /** Turns kept per session for the Jarvis app's view: a whole tic-tac-toe game. */
+    private static final int KEPT_TURNS = 9;
 
     /** One open session. */
     private final class Session implements IBinder.DeathRecipient {
@@ -89,6 +94,8 @@ public final class SessionManager extends IJarvisSessionService.Stub
         volatile boolean ended;
         volatile boolean inTurn;
         int turns;
+        /** Traces of the last turns, oldest first; guarded by mLock. */
+        final ArrayDeque<JSONObject> turnTraces = new ArrayDeque<>();
 
         Session(SessionManifest manifest, int uid, IJarvisSessionCallback callback,
                 Set<String> openTools) {
@@ -298,6 +305,10 @@ public final class SessionManager extends IJarvisSessionService.Stub
                 // Trace only.
             }
             mLastTurn = result.trace.toString();
+            synchronized (mLock) {
+                session.turnTraces.addLast(result.trace);
+                while (session.turnTraces.size() > KEPT_TURNS) session.turnTraces.removeFirst();
+            }
             Log.i(TAG, "Turn " + session.turns + " of " + session.manifest.name + ": "
                     + (result.done ? "done" : "gave up") + ", " + result.detail + ", "
                     + result.trace.optLong("ms") + " ms");
@@ -342,6 +353,11 @@ public final class SessionManager extends IJarvisSessionService.Stub
             // Already gone.
         }
         mLastEnd = session.manifest.name + ": " + reason;
+        try {
+            mLastSession = describe(session, reason);
+        } catch (JSONException e) {
+            Log.w(TAG, "Session record", e);
+        }
         Log.i(TAG, "Session ended: " + session.manifest.packageName + "/"
                 + session.manifest.name + ", " + reason + ", after "
                 + (SystemClock.elapsedRealtime() - session.startedAt) / 1000 + " s and "
@@ -451,6 +467,77 @@ public final class SessionManager extends IJarvisSessionService.Stub
             }
         }
         return result + " The " + manifest.title + " session with Jarvis is open.";
+    }
+
+    // -------------------------------------------------------------------------
+    // The Jarvis app's view (getStatus "sessions"), read-only
+    // -------------------------------------------------------------------------
+
+    /**
+     * What the Jarvis app shows for sessions: each declared session, the open
+     * one, and the last one that ended, with its last events and turns. Lets a
+     * person see after a game what Jarvis was given and what it did, without
+     * running a session tool outside its session.
+     */
+    public JSONObject statusJson() {
+        JSONObject json = new JSONObject();
+        try {
+            JSONArray declared = new JSONArray();
+            for (SessionManifest m : mRegistry.all()) {
+                JSONObject d = new JSONObject()
+                        .put("app", m.packageName)
+                        .put("name", m.name)
+                        .put("title", m.title)
+                        .put("tools", new JSONArray(m.tools))
+                        .put("events", new JSONArray(m.events));
+                if (m.startTool != null) d.put("startTool", m.startTool);
+                if (m.turnTool != null) {
+                    d.put("turn", new JSONObject().put("event", m.turnEvent)
+                            .put("tool", m.turnTool).put("arg", m.turnArg)
+                            .put("choices", m.turnChoices));
+                }
+                declared.put(d);
+            }
+            json.put("declared", declared);
+            Session session;
+            synchronized (mLock) {
+                session = mActive;
+            }
+            if (session != null) json.put("open", describe(session, null));
+            JSONObject last = mLastSession;
+            if (last != null) json.put("last", last);
+        } catch (JSONException e) {
+            Log.w(TAG, "Session status", e);
+        }
+        return json;
+    }
+
+    /** One session as data: tools, the last events, the kept turns; ended if reason is set. */
+    private JSONObject describe(Session session, String endReason) throws JSONException {
+        JSONObject json = new JSONObject()
+                .put("app", session.manifest.packageName)
+                .put("name", session.manifest.name)
+                .put("title", session.manifest.title)
+                .put("seconds", (SystemClock.elapsedRealtime() - session.startedAt) / 1000)
+                .put("turns", session.turns)
+                .put("inTurn", session.inTurn && endReason == null)
+                .put("openTools", new JSONArray(session.openTools));
+        if (endReason != null) json.put("ended", endReason);
+        JSONArray events = new JSONArray();
+        JSONArray turns = new JSONArray();
+        synchronized (mLock) {
+            for (SessionPrompt.Event event : session.recent) {
+                JSONObject e = new JSONObject().put("name", event.name);
+                try {
+                    e.put("data", new JSONObject(event.data));
+                } catch (JSONException notAnObject) {
+                    e.put("data", event.data);
+                }
+                events.put(e);
+            }
+            for (JSONObject trace : session.turnTraces) turns.put(trace);
+        }
+        return json.put("events", events).put("turnTraces", turns);
     }
 
     // -------------------------------------------------------------------------

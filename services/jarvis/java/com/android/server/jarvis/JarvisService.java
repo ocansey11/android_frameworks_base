@@ -465,6 +465,7 @@ public class JarvisService extends SystemService {
             if (trace != null) status.put("last", new org.json.JSONObject(trace));
             status.put("apps", store ? JarvisStore.box(AppRecord.class).count() : 0);
             status.put("tools", store ? JarvisStore.box(ToolRecord.class).count() : 0);
+            if (mSessions != null) status.put("sessions", mSessions.statusJson());
             return status.toString();
         } catch (Exception e) {
             Log.e(TAG, "statusJson() failed", e);
