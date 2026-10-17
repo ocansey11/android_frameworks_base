@@ -20,12 +20,37 @@ public final class Completion {
     public final JSONObject toolArguments;
     /** Why the engine failed, or null if it did not. */
     public final String error;
+    /**
+     * Every call the model made, in order, as {name, arguments}; a session
+     * turn reads several (say, then move). Never null; empty if none.
+     */
+    public final JSONArray calls;
+    /** True if the engine sampled under a grammar (llama.cpp only). */
+    public final boolean constrained;
+    /** Prompt size and engine time, when the engine reports them; else 0. */
+    public final int promptTokens;
+    public final long engineMs;
+    /** Prompt tokens taken from the previous request's cache, and time to the first token. */
+    public final int reusedTokens;
+    public final long firstTokenMs;
 
     private Completion(String text, String toolName, JSONObject toolArguments, String error) {
+        this(text, toolName, toolArguments, error, null, false, 0, 0, 0, 0);
+    }
+
+    private Completion(String text, String toolName, JSONObject toolArguments, String error,
+            JSONArray calls, boolean constrained, int promptTokens, long engineMs,
+            int reusedTokens, long firstTokenMs) {
         this.text = text != null ? text : "";
         this.toolName = toolName;
         this.toolArguments = toolArguments != null ? toolArguments : new JSONObject();
         this.error = error;
+        this.calls = calls != null ? calls : new JSONArray();
+        this.constrained = constrained;
+        this.promptTokens = promptTokens;
+        this.engineMs = engineMs;
+        this.reusedTokens = reusedTokens;
+        this.firstTokenMs = firstTokenMs;
     }
 
     public boolean hasToolCall() {
@@ -60,13 +85,29 @@ public final class Completion {
         String toolName = null;
         JSONObject toolArguments = null;
         JSONArray calls = envelope.optJSONArray("function_calls");
-        if (calls != null && calls.length() > 0) {
-            JSONObject call = calls.optJSONObject(0);
-            if (call != null && !call.optString("name").isEmpty()) {
-                toolName = call.optString("name");
-                toolArguments = call.optJSONObject("arguments");
+        JSONArray named = new JSONArray();
+        if (calls != null) {
+            for (int i = 0; i < calls.length(); i++) {
+                JSONObject call = calls.optJSONObject(i);
+                if (call == null || call.optString("name").isEmpty()) continue;
+                JSONObject arguments = call.optJSONObject("arguments");
+                if (toolName == null) {
+                    toolName = call.optString("name");
+                    toolArguments = arguments;
+                }
+                try {
+                    named.put(new JSONObject()
+                            .put("name", call.optString("name"))
+                            .put("arguments", arguments != null ? arguments : new JSONObject()));
+                } catch (JSONException e) {
+                    // Cannot happen with a non-null name; skip the call if it does.
+                }
             }
         }
-        return new Completion(envelope.optString("response", ""), toolName, toolArguments, error);
+        return new Completion(envelope.optString("response", ""), toolName, toolArguments, error,
+                named, envelope.optBoolean("constrained", false),
+                envelope.optInt("prefill_tokens", 0), (long) envelope.optDouble("total_time_ms", 0),
+                envelope.optInt("reused_tokens", 0),
+                (long) envelope.optDouble("time_to_first_token_ms", 0));
     }
 }

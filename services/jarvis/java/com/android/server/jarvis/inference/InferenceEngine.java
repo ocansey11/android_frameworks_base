@@ -46,6 +46,16 @@ public interface InferenceEngine {
      */
     String complete(long modelHandle, String messagesJson, String toolsJson);
 
+    /**
+     * As {@link #complete(long, String, String)}, with engine options as a
+     * JSON object (max_tokens, temperature, tool_choice, parallel_tool_calls,
+     * constrain_tools, grammar). An engine that has no options ignores them.
+     */
+    default String complete(long modelHandle, String messagesJson, String toolsJson,
+            String optionsJson) {
+        return complete(modelHandle, messagesJson, toolsJson);
+    }
+
     /** Opens (or creates) a vector index stored under {@code indexDir}. 0 on failure. */
     long indexInit(String indexDir, int embeddingDim);
 

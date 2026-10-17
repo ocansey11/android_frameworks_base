@@ -73,6 +73,32 @@ public class ToolDispatcher {
     private final Context mContext;
     private final Handler mCallbackHandler;
 
+    /**
+     * Decides which tools may run right now. Sessions (AGENT_EXPERIENCE.md
+     * section 11) put a fence around the tools: during a session only that
+     * session's tools and {@code say} run; outside one, session tools do not.
+     * It is applied here, on the one route every tool call takes, so that no
+     * prompt, model or shell command can get past it.
+     */
+    public interface Fence {
+        /** Null to let the call run, or the refusal text ("Error: refused..."). */
+        String refusal(String toolName, String packageName);
+        /** The only package whose tools may answer to a name now, or null for any. */
+        String scope();
+        /** Runs a tool Jarvis itself gives (say); null if {@code toolName} is not one. */
+        String runBuiltIn(String toolName, JSONObject arguments);
+        /** True if the tool must not be offered to a model outside its session. */
+        boolean isHidden(String toolName, String packageName);
+        /** True if the tool opens an app for a session (it may start an activity). */
+        boolean isStartTool(String toolName, String packageName);
+        /** Called after a start tool ran; waits for the session and returns the reply to give. */
+        String afterStartTool(String toolName, String packageName, String result);
+        /** Broadcast options for a start tool's call (lets it open its activity), or null. */
+        Bundle startToolOptions();
+    }
+
+    private volatile Fence mFence;
+
     /** The calls made on this thread since {@link #startRecording}, or null when not recording. */
     private static final ThreadLocal<JSONArray> sRecording = new ThreadLocal<>();
 
@@ -81,6 +107,22 @@ public class ToolDispatcher {
         HandlerThread ht = new HandlerThread("ToolDispatcher-callback");
         ht.start();
         this.mCallbackHandler = new Handler(ht.getLooper());
+    }
+
+    public void setFence(Fence fence) {
+        mFence = fence;
+    }
+
+    /** Drops the tools the fence hides from models (session tools outside their session). */
+    private List<ToolRecord> visible(List<ToolRecord> tools) {
+        final Fence fence = mFence;
+        if (fence == null) return tools;
+        List<ToolRecord> out = new ArrayList<>();
+        for (ToolRecord tool : tools) {
+            AppRecord app = tool.app.getTarget();
+            if (!fence.isHidden(tool.toolName, app != null ? app.packageName : null)) out.add(tool);
+        }
+        return out;
     }
 
     // -------------------------------------------------------------------------
@@ -151,6 +193,7 @@ public class ToolDispatcher {
             if (tool != null) results.add(tool);
         }
 
+        results = visible(results);
         Log.i(TAG, "Semantic search found " + results.size() + " tool(s) for query");
         return results;
     }
@@ -283,10 +326,33 @@ public class ToolDispatcher {
         if (candidates.isEmpty()) {
             // No embeddings to rank with. Keyword matching on a whole sentence
             // finds nothing, so offer them all and let the model choose.
-            List<ToolRecord> all = JarvisStore.box(ToolRecord.class).getAll();
+            List<ToolRecord> all = visible(JarvisStore.box(ToolRecord.class).getAll());
             candidates = all.subList(0, Math.min(all.size(), MAX_OFFERED_TOOLS));
         }
         return candidates.isEmpty() ? null : buildToolsJson(candidates);
+    }
+
+    /**
+     * The definitions of the named tools of one app, in the order given, as
+     * the JSON array an engine takes. Tools the app does not declare are
+     * left out. Used for a session turn, whose tools are fixed.
+     */
+    public String toolsJsonForPackage(String packageName, List<String> names) {
+        if (!JarvisStore.isReady()) return "[]";
+        List<ToolRecord> picked = new ArrayList<>();
+        List<ToolRecord> all = JarvisStore.box(ToolRecord.class).getAll();
+        for (String name : names) {
+            for (ToolRecord tool : all) {
+                AppRecord app = tool.app.getTarget();
+                if (name.equals(tool.toolName) && app != null
+                        && packageName.equals(app.packageName)) {
+                    picked.add(tool);
+                    break;
+                }
+            }
+        }
+        String json = buildToolsJson(picked);
+        return json != null ? json : "[]";
     }
 
     /**
@@ -295,7 +361,7 @@ public class ToolDispatcher {
      */
     public String allToolsJson() {
         if (!JarvisStore.isReady()) return null;
-        List<ToolRecord> all = new ArrayList<>(JarvisStore.box(ToolRecord.class).getAll());
+        List<ToolRecord> all = new ArrayList<>(visible(JarvisStore.box(ToolRecord.class).getAll()));
         // A fixed order: the model's confidence shifts with the order tools are
         // listed in, so it must not depend on the order they were registered.
         all.sort((x, y) -> String.valueOf(x.toolName).compareTo(String.valueOf(y.toolName)));
@@ -386,7 +452,15 @@ public class ToolDispatcher {
         }
 
         Log.i(TAG, "Dispatching tool: " + call.app.packageName + "/" + call.tool.toolName);
-        mContext.sendBroadcastAsUser(intent, UserHandle.CURRENT);
+        final Fence fence = mFence;
+        if (fence != null && fence.isStartTool(call.tool.toolName, call.app.packageName)) {
+            // A start tool opens its app. An app in the background may not
+            // start an activity unless the broadcast lets it.
+            mContext.sendBroadcastAsUser(intent, UserHandle.CURRENT, null,
+                    fence.startToolOptions());
+        } else {
+            mContext.sendBroadcastAsUser(intent, UserHandle.CURRENT);
+        }
 
         try {
             boolean received = latch.await(DISPATCH_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -539,23 +613,6 @@ public class ToolDispatcher {
             return "Error: store not ready";
         }
 
-        // Look up the ToolRecord by exact name
-        ToolRecord tool = JarvisStore.box(ToolRecord.class).query()
-                .equal(ToolRecord_.toolName, toolName,
-                        io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
-                .build().findFirst();
-
-        if (tool == null) {
-            Log.w(TAG, "dispatchByName: no ToolRecord found for name=" + toolName);
-            return "Error: tool '" + toolName + "' not registered";
-        }
-
-        AppRecord app = tool.app.getTarget();
-        if (app == null) {
-            Log.w(TAG, "dispatchByName: ToolRecord has no AppRecord for name=" + toolName);
-            return "Error: tool '" + toolName + "' has no associated app";
-        }
-
         JSONObject arguments = new JSONObject();
         if (argsJson != null && !argsJson.trim().isEmpty()) {
             try {
@@ -566,7 +623,53 @@ public class ToolDispatcher {
             }
         }
 
-        return dispatch(new ToolCall(tool, app, arguments));
+        final Fence fence = mFence;
+        final String scope = fence != null ? fence.scope() : null;
+        if (fence != null) {
+            String builtIn = fence.runBuiltIn(toolName, arguments);
+            if (builtIn != null) return builtIn;
+        }
+
+        // Look up the ToolRecord by exact name; during a session only the
+        // session's own app can answer to it ("move" may exist in many games).
+        // TODO(AX 11.7): when two apps declare a tool of this name (two chess
+        // apps, both with start_chess), Jarvis must ask the person which one.
+        // Not designed yet; the first registered wins.
+        ToolRecord tool = null;
+        for (ToolRecord candidate : JarvisStore.box(ToolRecord.class).query()
+                .equal(ToolRecord_.toolName, toolName,
+                        io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                .build().find()) {
+            AppRecord owner = candidate.app.getTarget();
+            if (scope == null || (owner != null && scope.equals(owner.packageName))) {
+                tool = candidate;
+                break;
+            }
+        }
+        AppRecord app = tool != null ? tool.app.getTarget() : null;
+
+        if (fence != null) {
+            String refusal = fence.refusal(toolName, app != null ? app.packageName : null);
+            if (refusal != null) {
+                Log.w(TAG, "Fence: " + refusal);
+                return refusal;
+            }
+        }
+
+        if (tool == null) {
+            Log.w(TAG, "dispatchByName: no ToolRecord found for name=" + toolName);
+            return "Error: tool '" + toolName + "' not registered";
+        }
+        if (app == null) {
+            Log.w(TAG, "dispatchByName: ToolRecord has no AppRecord for name=" + toolName);
+            return "Error: tool '" + toolName + "' has no associated app";
+        }
+
+        String result = dispatch(new ToolCall(tool, app, arguments));
+        if (fence != null && fence.isStartTool(toolName, app.packageName)) {
+            result = fence.afterStartTool(toolName, app.packageName, result);
+        }
+        return result;
     }
 
     // -------------------------------------------------------------------------

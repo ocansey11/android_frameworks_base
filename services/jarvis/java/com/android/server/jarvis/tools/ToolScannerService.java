@@ -14,6 +14,7 @@ import android.util.Log;
 
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.inference.Inference;
+import com.android.server.jarvis.session.SessionRegistry;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -62,9 +63,13 @@ public class ToolScannerService {
     private long mModelHandle = 0L;
     private long mIndexHandle = 0L;
 
-    public ToolScannerService(Context context) {
+    /** Session manifests are read at the same moments as tools; null if sessions are off. */
+    private final SessionRegistry mSessions;
+
+    public ToolScannerService(Context context, SessionRegistry sessions) {
         this.mContext        = context;
         this.mPackageManager = context.getPackageManager();
+        this.mSessions       = sessions;
     }
 
     // -------------------------------------------------------------------------
@@ -74,6 +79,7 @@ public class ToolScannerService {
     public void start() {
         loadCuratedTools();
         scanAllPackages();
+        if (mSessions != null) mSessions.scanAll();
 
         mReceiver = new PackageEventReceiver();
         IntentFilter filter = new IntentFilter();
@@ -119,10 +125,18 @@ public class ToolScannerService {
     // Scanning
     // -------------------------------------------------------------------------
 
+    /**
+     * The scan runs while system_server starts, before the user has unlocked
+     * the phone. A plain query then only sees direct-boot-aware receivers,
+     * which no tool app is, so the scan found nothing. Ask for both kinds.
+     */
+    private static final int SCAN_FLAGS = PackageManager.GET_META_DATA
+            | PackageManager.MATCH_DIRECT_BOOT_AWARE | PackageManager.MATCH_DIRECT_BOOT_UNAWARE;
+
     private void scanAllPackages() {
         Intent queryIntent = new Intent(ACTION_JARVIS_TOOL);
         List<ResolveInfo> resolved = mPackageManager.queryBroadcastReceivers(
-                queryIntent, PackageManager.GET_META_DATA);
+                queryIntent, SCAN_FLAGS);
 
         Log.i(TAG, "Initial scan — found " + resolved.size() + " tool receiver(s)");
         for (ResolveInfo info : resolved) {
@@ -134,7 +148,7 @@ public class ToolScannerService {
         Intent queryIntent = new Intent(ACTION_JARVIS_TOOL);
         queryIntent.setPackage(packageName);
         List<ResolveInfo> resolved = mPackageManager.queryBroadcastReceivers(
-                queryIntent, PackageManager.GET_META_DATA);
+                queryIntent, SCAN_FLAGS);
         for (ResolveInfo info : resolved) {
             processResolveInfo(info, "declared");
         }
@@ -470,9 +484,11 @@ public class ToolScannerService {
                     || Intent.ACTION_PACKAGE_REPLACED.equals(action)) {
                 Log.i(TAG, "Package installed/updated: " + packageName);
                 scanPackage(packageName);
+                if (mSessions != null) mSessions.scan(packageName);
             } else if (Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
                 Log.i(TAG, "Package removed: " + packageName);
                 removePackage(packageName);
+                if (mSessions != null) mSessions.remove(packageName);
             }
         }
     }

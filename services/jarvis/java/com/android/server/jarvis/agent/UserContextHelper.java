@@ -13,7 +13,8 @@ import java.util.List;
 /**
  * Loads UserContext.facts from ObjectBox and formats them for model injection.
  *
- * Used by PlanNode and RespondNode to personalise prompts with what DreamWorker
+ * Used by PlanNode and RespondNode, and by session turns
+ * (session/SessionManager), to personalise prompts with what DreamWorker
  * has learned about the user across previous sessions.
  *
  * Facts are injected into the context string passed to CactusWrapper.complete(),
@@ -27,7 +28,7 @@ import java.util.List;
  *   - facts field is empty or malformed JSON
  * Callers treat null as "no personalisation available" and proceed normally.
  */
-final class UserContextHelper {
+public final class UserContextHelper {
 
     private static final String TAG = "UserContextHelper";
 
@@ -41,7 +42,7 @@ final class UserContextHelper {
      *
      * @return formatted facts string, or null if no facts are available
      */
-    static String loadFormattedFacts() {
+    public static String loadFormattedFacts() {
         if (!JarvisStore.isReady()) return null;
 
         try {

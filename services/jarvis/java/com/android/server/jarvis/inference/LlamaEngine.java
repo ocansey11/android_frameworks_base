@@ -85,6 +85,13 @@ final class LlamaEngine implements InferenceEngine {
     }
 
     @Override
+    public String complete(long modelHandle, String messagesJson, String toolsJson,
+            String optionsJson) {
+        if (!sLoaded || modelHandle == 0L) return null;
+        return nativeComplete(modelHandle, messagesJson, optionsJson, toolsJson);
+    }
+
+    @Override
     public long indexInit(String indexDir, int embeddingDim) {
         FlatVectorIndex index = FlatVectorIndex.open(indexDir, embeddingDim);
         if (index == null) return 0L;

@@ -32,6 +32,8 @@ import com.android.server.jarvis.tools.FastPath;
 import com.android.server.jarvis.tools.ToolDispatcher;
 import com.android.server.jarvis.tools.ToolRecord;
 import com.android.server.jarvis.tools.ToolScannerService;
+import com.android.server.jarvis.session.SessionManager;
+import com.android.server.jarvis.session.SessionRegistry;
 
 /**
  * JarvisOS System Service.
@@ -54,6 +56,7 @@ import com.android.server.jarvis.tools.ToolScannerService;
  * Published Binder endpoints:
  *   "jarvis"       → IJarvisService (queries, indexing)
  *   "jarvis_tools" → IToolRegistry  (tool registry inspection)
+ *   "jarvis_session" → IJarvisSessionService (sessions, any app; see SessionManager)
  */
 public class JarvisService extends SystemService {
 
@@ -87,6 +90,7 @@ public class JarvisService extends SystemService {
     private ToolDispatcher mToolDispatcher;
     private JarvisExecutor mExecutor;
     private FastPath mFastPath;
+    private SessionManager mSessions;
     /** What happened inside the last request, as JSON; see {@link #recordTrace}. */
     private volatile String mLastTrace;
 
@@ -99,6 +103,13 @@ public class JarvisService extends SystemService {
     public void onStart() {
         publishBinderService("jarvis", mBinder);
         publishBinderService("jarvis_tools", mToolRegistryBinder);
+        // Sessions need the dispatcher (their fence lives in it) and are
+        // published now, so an app finds them as soon as it can run.
+        mToolDispatcher = new ToolDispatcher(mContext);
+        mSessions = new SessionManager(mContext,
+                new SessionRegistry(mContext.getPackageManager()), mToolDispatcher);
+        mToolDispatcher.setFence(mSessions);
+        publishBinderService("jarvis_session", mSessions);
         initializeAsync();
     }
 
@@ -125,8 +136,7 @@ public class JarvisService extends SystemService {
                 JarvisIndexWorker.schedule(mContext);
 
                 // Step 5 — Tool Registry
-                mToolScanner    = new ToolScannerService(mContext);
-                mToolDispatcher = new ToolDispatcher(mContext);
+                mToolScanner    = new ToolScannerService(mContext, mSessions.registry());
                 mExecutor       = new JarvisExecutor(mToolDispatcher);
                 mFastPath       = new FastPath(mToolDispatcher);
                 mToolScanner.start();
@@ -215,6 +225,9 @@ public class JarvisService extends SystemService {
 
     @Override
     public void onBootPhase(int phase) {
+        if (phase == SystemService.PHASE_ACTIVITY_MANAGER_READY) {
+            mSessions.start();
+        }
         if (phase == SystemService.PHASE_BOOT_COMPLETED) {
             Log.i(TAG, "Boot complete");
         }
@@ -638,6 +651,29 @@ public class JarvisService extends SystemService {
                     pw.println("decide ms: " + outcome.decideMs);
                     return 0;
                 }
+                case "session": {
+                    // cmd jarvis session [end | grammar on|off]
+                    String what = getNextArg();
+                    if ("end".equals(what)) {
+                        pw.println(mSessions.endFromShell() ? "ended" : "no open session");
+                        return 0;
+                    }
+                    if ("grammar".equals(what)) {
+                        String value = getNextArg();
+                        if ("on".equals(value) || "off".equals(value)) {
+                            android.os.SystemProperties.set(SessionManager.PROP_GRAMMAR,
+                                    "on".equals(value) ? "1" : "0");
+                        } else if (value != null) {
+                            pw.println("Error: grammar takes on or off");
+                            return -1;
+                        }
+                    } else if (what != null) {
+                        pw.println("Error: session takes nothing, end, or grammar [on|off]");
+                        return -1;
+                    }
+                    mSessions.dump(pw);
+                    return 0;
+                }
                 case "fast": {
                     String value = getNextArg();
                     if ("on".equals(value) || "off".equals(value)) {
@@ -673,6 +709,9 @@ public class JarvisService extends SystemService {
             pw.println("  route TEXT          show the tool calls the fast path would make, without making them");
             pw.println("  fast [on|off]       show or switch the fast path (tool calls without the chat model)");
             pw.println("  reload              load the engine's model files again");
+            pw.println("  session             declared sessions, the open one, and the last turn's trace");
+            pw.println("  session end         end the open session");
+            pw.println("  session grammar [on|off]  constrain turn tool calls with a grammar (default on)");
         }
     }
 

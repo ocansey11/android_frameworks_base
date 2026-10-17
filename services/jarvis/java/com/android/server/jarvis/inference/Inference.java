@@ -150,6 +150,28 @@ public final class Inference {
         return completion;
     }
 
+    /**
+     * Asks the model for a reply with engine options (see
+     * {@link InferenceEngine#complete(long, String, String, String)}). The
+     * messages go to the engine as they are; no context is added.
+     *
+     * @return the reply, or null if the engine failed
+     */
+    public static Completion completeWithOptions(long modelHandle, String messagesJson,
+            String toolsJson, String optionsJson) {
+        if (modelHandle == 0L || messagesJson == null) return null;
+        InferenceEngine engine = engine();
+        Completion completion = Completion.parse(
+                engine.complete(modelHandle, messagesJson, toolsJson, optionsJson));
+        if (completion == null) {
+            Log.e(TAG, engine.name() + ": complete failed: " + engine.getLastError());
+        } else if (completion.error != null) {
+            Log.e(TAG, engine.name() + ": complete failed: " + completion.error);
+            return null;
+        }
+        return completion;
+    }
+
     /** As {@link #completeWithTools} with no tools; returns just the text, or null. */
     public static String complete(long modelHandle, String messagesJson, String context) {
         Completion completion = completeWithTools(modelHandle, messagesJson, context, null);
