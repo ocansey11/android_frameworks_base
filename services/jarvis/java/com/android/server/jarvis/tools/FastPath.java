@@ -29,6 +29,8 @@ public final class FastPath {
 
     /** What happened to one request. */
     public static final class Outcome {
+        /** True if Needle was asked; false when the fast path is off or has no model. */
+        public boolean asked;
         /** True if tools ran and {@link #reply} is the answer. */
         public boolean handled;
         public String reply;
@@ -43,6 +45,11 @@ public final class FastPath {
 
     public static boolean isEnabled() {
         return SystemProperties.getBoolean(PROP_ENABLED, true);
+    }
+
+    /** The least confidence, in percent, at which Needle's choice runs. */
+    public static int confidencePercent() {
+        return SystemProperties.getInt(PROP_CONFIDENCE, DEFAULT_CONFIDENCE_PERCENT);
     }
 
     /** Handles a typed request. Never null; {@code handled} is false if it was left alone. */
@@ -74,6 +81,7 @@ public final class FastPath {
     private Outcome act(Needle.Decision decision, boolean dispatch) {
         Outcome outcome = new Outcome();
         if (decision == null) return outcome;
+        outcome.asked = true;
         outcome.transcript = decision.transcript;
         outcome.confidence = decision.confidence;
         outcome.decideMs = decision.engineMs;
@@ -85,8 +93,7 @@ public final class FastPath {
         }
         outcome.calls = calls.toString();
 
-        final int percent = SystemProperties.getInt(PROP_CONFIDENCE, DEFAULT_CONFIDENCE_PERCENT);
-        final boolean confident = decision.confidence * 100 >= percent;
+        final boolean confident = decision.confidence * 100 >= confidencePercent();
         Log.i(TAG, "decided in " + decision.engineMs + " ms, confidence "
                 + decision.confidence + ": " + (calls.length() > 0 ? calls : "no tool"));
         if (!dispatch || decision.calls.isEmpty() || !confident) return outcome;

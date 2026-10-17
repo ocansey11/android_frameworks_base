@@ -73,6 +73,9 @@ public class ToolDispatcher {
     private final Context mContext;
     private final Handler mCallbackHandler;
 
+    /** The calls made on this thread since {@link #startRecording}, or null when not recording. */
+    private static final ThreadLocal<JSONArray> sRecording = new ThreadLocal<>();
+
     public ToolDispatcher(Context context) {
         this.mContext = context;
         HandlerThread ht = new HandlerThread("ToolDispatcher-callback");
@@ -495,6 +498,40 @@ public class ToolDispatcher {
      * @return the tool's result string, or an error string on failure (never null)
      */
     public String dispatchByName(String toolName, String argsJson) {
+        final long start = System.nanoTime();
+        final String result = findAndDispatch(toolName, argsJson);
+        JSONArray recording = sRecording.get();
+        if (recording != null) {
+            try {
+                recording.put(new JSONObject()
+                        .put("name", toolName)
+                        .put("args", argsJson == null ? "{}" : argsJson)
+                        .put("result", result)
+                        .put("ms", (System.nanoTime() - start) / 1_000_000));
+            } catch (JSONException e) {
+                Log.w(TAG, "Could not record the call to " + toolName, e);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Starts recording the tool calls made on this thread, for the trace of one
+     * request. Calls are recorded only through {@link #dispatchByName}, the
+     * route that both the fast path and the agent loop take.
+     */
+    public static void startRecording() {
+        sRecording.set(new JSONArray());
+    }
+
+    /** Stops recording and returns the calls made since {@link #startRecording}; never null. */
+    public static JSONArray stopRecording() {
+        JSONArray recording = sRecording.get();
+        sRecording.remove();
+        return recording != null ? recording : new JSONArray();
+    }
+
+    private String findAndDispatch(String toolName, String argsJson) {
         if (toolName == null || toolName.trim().isEmpty()) {
             return "Error: toolName is null or empty";
         }

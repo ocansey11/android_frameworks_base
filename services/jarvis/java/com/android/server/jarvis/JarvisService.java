@@ -18,6 +18,7 @@ import com.android.server.jarvis.core.IndexQueue;
 import com.android.server.jarvis.core.JarvisStore;
 import com.android.server.jarvis.core.ModelRegistry;
 import com.android.server.jarvis.inference.Inference;
+import com.android.server.jarvis.inference.ModelName;
 import com.android.server.jarvis.inference.Needle;
 import com.android.server.jarvis.inference.Pcm;
 import com.android.server.jarvis.indexing.JarvisFileObserver;
@@ -86,6 +87,8 @@ public class JarvisService extends SystemService {
     private ToolDispatcher mToolDispatcher;
     private JarvisExecutor mExecutor;
     private FastPath mFastPath;
+    /** What happened inside the last request, as JSON; see {@link #recordTrace}. */
+    private volatile String mLastTrace;
 
     public JarvisService(Context context) {
         super(context);
@@ -333,13 +336,49 @@ public class JarvisService extends SystemService {
             return "Error: Jarvis service is still initializing. Please try again.";
         }
         Log.i(TAG, "processQuery: " + query.substring(0, Math.min(50, query.length())));
+        final long start = System.nanoTime();
+        FastPath.Outcome fast = null;
+        String reply;
+        ToolDispatcher.startRecording();
         try {
-            FastPath.Outcome fast = mFastPath.tryText(query);
-            if (fast.handled) return fast.reply;
-            return mExecutor.execute(query);
+            fast = mFastPath.tryText(query);
+            reply = fast.handled ? fast.reply : mExecutor.execute(query);
         } catch (Exception e) {
             Log.e(TAG, "processQuery failed", e);
-            return "Error: " + e.getMessage();
+            reply = "Error: " + e.getMessage();
+        }
+        recordTrace(query, false, fast, reply, start);
+        return reply;
+    }
+
+    /**
+     * Keeps what happened inside one request for the status (the Jarvis app's
+     * test mode): who answered, what Needle chose, every tool that ran with its
+     * arguments and result, and the times. Stops the recording started by the
+     * caller. Text only; for a spoken request, what was heard (audio is never kept).
+     */
+    private void recordTrace(String request, boolean spoken, FastPath.Outcome fast,
+            String reply, long start) {
+        final org.json.JSONArray tools = ToolDispatcher.stopRecording();
+        try {
+            org.json.JSONObject trace = new org.json.JSONObject();
+            trace.put("request", request != null ? request : "");
+            trace.put("spoken", spoken);
+            trace.put("path", fast != null && fast.handled ? "fast" : "model");
+            trace.put("model", ModelName.of(Inference.modelPath("chat")));
+            if (fast != null && fast.asked) {
+                trace.put("needle", new org.json.JSONObject()
+                        .put("calls", fast.calls)
+                        .put("confidence", fast.confidence)
+                        .put("bar", FastPath.confidencePercent() / 100.0)
+                        .put("ms", fast.decideMs));
+            }
+            trace.put("tools", tools);
+            trace.put("ms", (System.nanoTime() - start) / 1_000_000);
+            trace.put("reply", reply);
+            mLastTrace = trace.toString();
+        } catch (org.json.JSONException e) {
+            Log.w(TAG, "Could not record the trace", e);
         }
     }
 
@@ -359,10 +398,12 @@ public class JarvisService extends SystemService {
         if (!Needle.canHear()) {
             return "Error: no speech model installed (cmd jarvis install-model whistle)";
         }
+        final long start = System.nanoTime();
+        ToolDispatcher.startRecording();
+        FastPath.Outcome fast = null;
+        String reply = null;
         try {
-            final long start = System.nanoTime();
-            FastPath.Outcome fast = mFastPath.tryAudio(pcm);
-            String reply;
+            fast = mFastPath.tryAudio(pcm);
             if (fast.handled) {
                 reply = fast.reply;
             } else if (fast.transcript == null || fast.transcript.trim().isEmpty()) {
@@ -382,11 +423,12 @@ public class JarvisService extends SystemService {
                 details.println("tool ms: " + fast.toolMs);
                 details.println("total ms: " + totalMs);
             }
-            return reply;
         } catch (Exception e) {
             Log.e(TAG, "spoken query failed", e);
-            return "Error: " + e.getMessage();
+            reply = "Error: " + e.getMessage();
         }
+        recordTrace(fast != null ? fast.transcript : null, true, fast, reply, start);
+        return reply;
     }
 
     private String statusJson() {
@@ -403,6 +445,11 @@ public class JarvisService extends SystemService {
             status.put("models", models);
             status.put("fastTools", Needle.canRoute());
             status.put("speech", Needle.canHear());
+            status.put("chatModel", ModelName.of(Inference.modelPath("chat")));
+            status.put("fastPath", FastPath.isEnabled() && Needle.canRoute());
+            status.put("fastBar", FastPath.confidencePercent() / 100.0);
+            final String trace = mLastTrace;
+            if (trace != null) status.put("last", new org.json.JSONObject(trace));
             status.put("apps", store ? JarvisStore.box(AppRecord.class).count() : 0);
             status.put("tools", store ? JarvisStore.box(ToolRecord.class).count() : 0);
             return status.toString();
@@ -476,7 +523,12 @@ public class JarvisService extends SystemService {
                         pw.println("Error: tool dispatcher not started");
                         return -1;
                     }
-                    pw.println(mToolDispatcher.dispatchByName(name, argsJson));
+                    final long token = Binder.clearCallingIdentity();   // as callTool does
+                    try {
+                        pw.println(mToolDispatcher.dispatchByName(name, argsJson));
+                    } finally {
+                        Binder.restoreCallingIdentity(token);
+                    }
                     return 0;
                 }
                 case "engine": {
@@ -539,11 +591,20 @@ public class JarvisService extends SystemService {
                     reloadModels(null);
                     pw.println("models reloaded for engine " + Inference.engine().name());
                     return 0;
-                case "query":
+                case "query": {
                     // Not mBinder.processQuery(): that checks the caller's
                     // permission, and the caller here is the shell.
-                    pw.println(runQuery(getNextArgRequired()));
+                    // Tools run as the system, as they do for processQuery;
+                    // as the shell they are refused (roadblock 34).
+                    final String text = getNextArgRequired();
+                    final long token = Binder.clearCallingIdentity();
+                    try {
+                        pw.println(runQuery(text));
+                    } finally {
+                        Binder.restoreCallingIdentity(token);
+                    }
                     return 0;
+                }
                 case "voice": {
                     // adb shell -T cmd jarvis voice < clip.wav
                     float[] pcm;
@@ -554,7 +615,13 @@ public class JarvisService extends SystemService {
                         return -1;
                     }
                     pw.println("audio seconds: " + pcm.length / (float) Pcm.SAMPLE_RATE);
-                    String reply = runSpokenQuery(pcm, pw);
+                    final long token = Binder.clearCallingIdentity();   // as processQueryWithAudio does
+                    String reply;
+                    try {
+                        reply = runSpokenQuery(pcm, pw);
+                    } finally {
+                        Binder.restoreCallingIdentity(token);
+                    }
                     pw.println("reply: " + reply);
                     return 0;
                 }
