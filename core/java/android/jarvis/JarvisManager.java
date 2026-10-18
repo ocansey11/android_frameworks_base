@@ -169,6 +169,54 @@ public class JarvisManager {
     }
 
     // -------------------------------------------------------------------------
+    // History API
+    // -------------------------------------------------------------------------
+
+    /**
+     * Kept conversations as a JSON object string (see
+     * IJarvisService.listConversations). Kept about a day, then forgotten.
+     *
+     * @throws JarvisException if the service is unavailable
+     */
+    public String listConversations() throws JarvisException {
+        try {
+            return requireService().listConversations();
+        } catch (RemoteException e) {
+            Log.e(TAG, "listConversations() failed", e);
+            throw new JarvisException("Failed to communicate with Jarvis service", e);
+        }
+    }
+
+    /**
+     * One kept conversation with its messages, as a JSON object string, or
+     * "{}" if it has been forgotten.
+     *
+     * @throws JarvisException if the service is unavailable
+     */
+    public String getConversation(long id) throws JarvisException {
+        try {
+            return requireService().getConversation(id);
+        } catch (RemoteException e) {
+            Log.e(TAG, "getConversation() failed", e);
+            throw new JarvisException("Failed to communicate with Jarvis service", e);
+        }
+    }
+
+    /**
+     * Forgets every kept conversation. What Jarvis learned from them is kept.
+     *
+     * @throws JarvisException if the service is unavailable
+     */
+    public void clearHistory() throws JarvisException {
+        try {
+            requireService().clearHistory();
+        } catch (RemoteException e) {
+            Log.e(TAG, "clearHistory() failed", e);
+            throw new JarvisException("Failed to communicate with Jarvis service", e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Tool registry API
     // -------------------------------------------------------------------------
 

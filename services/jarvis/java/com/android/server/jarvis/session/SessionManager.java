@@ -17,6 +17,7 @@ import android.util.Log;
 
 import com.android.server.jarvis.agent.UserContextHelper;
 import com.android.server.jarvis.core.ModelRegistry;
+import com.android.server.jarvis.history.History;
 import com.android.server.jarvis.inference.Inference;
 import com.android.server.jarvis.tools.ToolDispatcher;
 
@@ -79,6 +80,11 @@ public final class SessionManager extends IJarvisSessionService.Stub
     private volatile JSONObject mLastSession;
     /** Turns kept per session for the Jarvis app's view: a whole tic-tac-toe game. */
     private static final int KEPT_TURNS = 9;
+    /** Entries kept per session for its History record; a long session keeps its end. */
+    private static final int LOG_ENTRIES = 200;
+    /** Writes ended sessions to History off the Binder and turn threads. */
+    private final ExecutorService mRecorder = Executors.newSingleThreadExecutor(
+            r -> new Thread(r, "JarvisSessionHistory"));
 
     /** One open session. */
     private final class Session implements IBinder.DeathRecipient {
@@ -96,6 +102,8 @@ public final class SessionManager extends IJarvisSessionService.Stub
         int turns;
         /** Traces of the last turns, oldest first; guarded by mLock. */
         final ArrayDeque<JSONObject> turnTraces = new ArrayDeque<>();
+        /** Events and turns in order, for History: {kind, name, data} or {kind, trace}; mLock. */
+        final ArrayDeque<JSONObject> log = new ArrayDeque<>();
 
         Session(SessionManifest manifest, int uid, IJarvisSessionCallback callback,
                 Set<String> openTools) {
@@ -249,7 +257,14 @@ public final class SessionManager extends IJarvisSessionService.Stub
             throw new IllegalArgumentException("event data must be a JSON object");
         }
         SessionPrompt.Event recorded = new SessionPrompt.Event(event, data);
+        JSONObject entry = new JSONObject();
+        try {
+            entry.put("kind", "event").put("name", event).put("data", new JSONObject(data));
+        } catch (JSONException e) {
+            // Checked above.
+        }
         synchronized (mLock) {
+            addToLog(session, entry);
             session.recent.addLast(recorded);
             while (session.recent.size() > SessionPrompt.MAX_RECENT_EVENTS + 1) {
                 session.recent.removeFirst();
@@ -307,6 +322,11 @@ public final class SessionManager extends IJarvisSessionService.Stub
             mLastTurn = result.trace.toString();
             synchronized (mLock) {
                 session.turnTraces.addLast(result.trace);
+                try {
+                    addToLog(session, new JSONObject().put("kind", "turn").put("trace", result.trace));
+                } catch (JSONException e) {
+                    // Record only.
+                }
                 while (session.turnTraces.size() > KEPT_TURNS) session.turnTraces.removeFirst();
             }
             Log.i(TAG, "Turn " + session.turns + " of " + session.manifest.name + ": "
@@ -319,6 +339,12 @@ public final class SessionManager extends IJarvisSessionService.Stub
         } finally {
             session.inTurn = false;
         }
+    }
+
+    /** Caller holds mLock. */
+    private static void addToLog(Session session, JSONObject entry) {
+        session.log.addLast(entry);
+        while (session.log.size() > LOG_ENTRIES) session.log.removeFirst();
     }
 
     private static String withSay(String toolsJson) {
@@ -358,11 +384,38 @@ public final class SessionManager extends IJarvisSessionService.Stub
         } catch (JSONException e) {
             Log.w(TAG, "Session record", e);
         }
+        keep(session, reason);
         Log.i(TAG, "Session ended: " + session.manifest.packageName + "/"
                 + session.manifest.name + ", " + reason + ", after "
                 + (SystemClock.elapsedRealtime() - session.startedAt) / 1000 + " s and "
                 + session.turns + " turn(s)");
         tell(session, cb -> cb.onSessionEnded(reason));
+    }
+
+    /**
+     * Writes the ended session to History, which keeps it about a day and
+     * gives DreamWorker its input. A session with no events and no turns
+     * (opened and closed straight away) is not worth a record.
+     */
+    private void keep(Session session, String reason) {
+        final JSONArray log;
+        synchronized (mLock) {
+            if (session.log.isEmpty()) return;
+            log = new JSONArray(new ArrayList<>(session.log));
+        }
+        final long seconds = (SystemClock.elapsedRealtime() - session.startedAt) / 1000;
+        final int turns = session.turns;
+        mRecorder.execute(() -> {
+            String label = session.manifest.packageName;
+            try {
+                PackageManager pm = mContext.getPackageManager();
+                label = String.valueOf(pm.getApplicationLabel(
+                        pm.getApplicationInfo(session.manifest.packageName, 0)));
+            } catch (PackageManager.NameNotFoundException e) {
+                // Uninstalled since: the package name will do.
+            }
+            History.recordSession(label, session.manifest.title, log, turns, seconds, reason);
+        });
     }
 
     /** Ends the open session from the shell. */

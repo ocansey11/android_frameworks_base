@@ -56,4 +56,21 @@ interface IJarvisService {
      * Phase 6 — implemented in JarvisService, Cactus layer wired by Sam after upstream pull.
      */
     String processQueryWithAudio(String query, in byte[] pcmData);
+
+    /**
+     * Kept conversations, chats and app sessions, newest first, as JSON:
+     * {keepHours, conversations: [{id, title, mode, createdAt, lastMessageAt,
+     * preview, messages}]}. Conversations are kept keepHours hours (default
+     * 24), then forgotten; what Jarvis learned from them stays.
+     */
+    String listConversations();
+
+    /**
+     * One conversation as JSON: {id, title, mode, createdAt, messages:
+     * [{content, isUser, source, timestamp}]}, or "{}" if it is gone.
+     */
+    String getConversation(long id);
+
+    /** Forgets every kept conversation. What Jarvis learned is kept. */
+    void clearHistory();
 }

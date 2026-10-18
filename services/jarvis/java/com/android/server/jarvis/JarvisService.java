@@ -26,6 +26,7 @@ import com.android.server.jarvis.indexing.JarvisIndexWorker;
 import com.android.server.jarvis.model.SourceFile;
 import com.android.server.jarvis.model.SourceFile_;
 import com.android.server.jarvis.agent.DreamWorker;
+import com.android.server.jarvis.history.History;
 import com.android.server.jarvis.agent.JarvisExecutor;
 import com.android.server.jarvis.tools.AppRecord;
 import com.android.server.jarvis.tools.FastPath;
@@ -149,6 +150,8 @@ public class JarvisService extends SystemService {
 
                 // Step 6 — DreamWorker (nightly memory consolidation)
                 DreamWorker.schedule(mContext);
+                // Raw history is kept about a day; forget what aged out while off.
+                History.prune();
 
                 mIsReady = true;
                 Log.i(TAG, "JarvisService initialized");
@@ -305,6 +308,24 @@ public class JarvisService extends SystemService {
         }
 
         @Override
+        public String listConversations() {
+            enforceCallingPermission();
+            return History.listJson();
+        }
+
+        @Override
+        public String getConversation(long id) {
+            enforceCallingPermission();
+            return History.conversationJson(id);
+        }
+
+        @Override
+        public void clearHistory() {
+            enforceCallingPermission();
+            History.clear();
+        }
+
+        @Override
         public String processQueryWithImage(String query, byte[] imageData) {
             enforceCallingPermission();
             if (!mIsReady) return "Error: Jarvis service is still initializing.";
@@ -393,6 +414,7 @@ public class JarvisService extends SystemService {
         } catch (org.json.JSONException e) {
             Log.w(TAG, "Could not record the trace", e);
         }
+        History.recordChat(request, spoken, tools, reply);
     }
 
     /**
@@ -675,6 +697,31 @@ public class JarvisService extends SystemService {
                     mSessions.dump(pw);
                     return 0;
                 }
+                case "history": {
+                    // cmd jarvis history [clear | ID]
+                    String what = getNextArg();
+                    if ("clear".equals(what)) {
+                        History.clear();
+                        pw.println("history cleared (learned facts kept)");
+                    } else if (what != null) {
+                        try {
+                            pw.println(History.conversationJson(Long.parseLong(what)));
+                        } catch (NumberFormatException e) {
+                            pw.println("Error: history takes nothing, clear, or a conversation id");
+                            return -1;
+                        }
+                    } else {
+                        pw.println(History.listJson());
+                    }
+                    return 0;
+                }
+                case "dream": {
+                    // DreamWorker now, instead of at night while charging.
+                    pw.println("DreamWorker: " + new DreamWorker(mContext).doWork());
+                    pw.println("learned facts: "
+                            + com.android.server.jarvis.agent.UserContextHelper.loadFormattedFacts());
+                    return 0;
+                }
                 case "fast": {
                     String value = getNextArg();
                     if ("on".equals(value) || "off".equals(value)) {
@@ -713,6 +760,11 @@ public class JarvisService extends SystemService {
             pw.println("  session             declared sessions, the open one, and the last turn's trace");
             pw.println("  session end         end the open session");
             pw.println("  session grammar [on|off]  constrain turn tool calls with a grammar (default on)");
+            pw.println("  history             kept conversations (chats and sessions) as JSON, newest first;");
+            pw.println("                      kept persist.sys.jarvis.history_hours hours (default 24)");
+            pw.println("  history ID          one conversation with its messages");
+            pw.println("  history clear       forget every conversation (learned facts are kept)");
+            pw.println("  dream               run DreamWorker now, then show the learned facts");
         }
     }
 
