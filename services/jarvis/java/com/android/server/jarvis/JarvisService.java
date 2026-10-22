@@ -466,6 +466,69 @@ public class JarvisService extends SystemService {
         return reply;
     }
 
+    private static boolean isZip(java.io.File file) {
+        try (java.io.InputStream in = new java.io.FileInputStream(file)) {
+            return in.read() == 'P' && in.read() == 'K' && in.read() == 3 && in.read() == 4;
+        } catch (java.io.IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Unpacks a zipped Cactus bundle so that {@code target} becomes the bundle
+     * folder (the one holding config.txt), replacing any bundle already there.
+     * Cactus's own zips put everything under one top-level folder; that level
+     * is dropped. Entries that would land outside the folder are refused.
+     */
+    private static void installBundle(java.io.File zip, java.io.File target)
+            throws java.io.IOException {
+        java.io.File staging = new java.io.File(target.getPath() + ".unpack");
+        deleteTree(staging);
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip)) {
+            String prefix = null;
+            for (java.util.Enumeration<? extends java.util.zip.ZipEntry> e = zf.entries();
+                    e.hasMoreElements(); ) {
+                String name = e.nextElement().getName();
+                if (name.endsWith("config.txt") && name.indexOf('/') == name.lastIndexOf('/')) {
+                    prefix = name.substring(0, name.length() - "config.txt".length());
+                    break;
+                }
+            }
+            if (prefix == null) throw new java.io.IOException("no config.txt in the zip");
+            final String root = staging.getCanonicalPath() + java.io.File.separator;
+            byte[] buffer = new byte[1 << 16];
+            for (java.util.Enumeration<? extends java.util.zip.ZipEntry> e = zf.entries();
+                    e.hasMoreElements(); ) {
+                java.util.zip.ZipEntry entry = e.nextElement();
+                if (entry.isDirectory() || !entry.getName().startsWith(prefix)) continue;
+                java.io.File out = new java.io.File(staging,
+                        entry.getName().substring(prefix.length()));
+                if (!out.getCanonicalPath().startsWith(root)) {
+                    throw new java.io.IOException("entry outside the bundle: " + entry.getName());
+                }
+                out.getParentFile().mkdirs();
+                try (java.io.InputStream in = zf.getInputStream(entry);
+                        java.io.OutputStream os = new java.io.FileOutputStream(out)) {
+                    for (int n; (n = in.read(buffer)) > 0; ) os.write(buffer, 0, n);
+                }
+            }
+        } catch (java.io.IOException e) {
+            deleteTree(staging);
+            throw e;
+        }
+        deleteTree(target);
+        if (!staging.renameTo(target)) {
+            deleteTree(staging);
+            throw new java.io.IOException("could not move the bundle to " + target);
+        }
+    }
+
+    private static void deleteTree(java.io.File file) {
+        java.io.File[] children = file.listFiles();
+        if (children != null) for (java.io.File child : children) deleteTree(child);
+        file.delete();
+    }
+
     private String statusJson() {
         try {
             org.json.JSONObject models = new org.json.JSONObject();
@@ -605,7 +668,18 @@ public class JarvisService extends SystemService {
                         pw.println("Error: " + e.getMessage());
                         return -1;
                     }
-                    if (bytes == 0 || !tmp.renameTo(target)) {
+                    if (!small && isZip(tmp)) {
+                        // A Cactus bundle: a zipped folder with config.txt, unpacked
+                        // so that target is the folder itself.
+                        try {
+                            installBundle(tmp, target);
+                        } catch (java.io.IOException e) {
+                            pw.println("Error: bad bundle: " + e.getMessage());
+                            return -1;
+                        } finally {
+                            tmp.delete();
+                        }
+                    } else if (bytes == 0 || !tmp.renameTo(target)) {
                         tmp.delete();
                         pw.println("Error: nothing received, or could not write " + target);
                         return -1;
@@ -751,7 +825,8 @@ public class JarvisService extends SystemService {
             pw.println("  engine [NAME]       show the inference engine, or switch to auto|cactus|llama");
             pw.println("  install-model ROLE  store the file on standard input as the chat, embed, needle or");
             pw.println("                      whistle model, then load it");
-            pw.println("                      (adb shell -T cmd jarvis install-model chat < m.gguf)");
+            pw.println("                      (adb shell -T cmd jarvis install-model chat < m.gguf);");
+            pw.println("                      a zipped Cactus bundle is unpacked into the engine's folder");
             pw.println("  voice               answer the WAV file on standard input as a spoken request,");
             pw.println("                      and show what was heard and how long each step took");
             pw.println("  route TEXT          show the tool calls the fast path would make, without making them");

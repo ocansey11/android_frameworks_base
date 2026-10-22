@@ -17,6 +17,9 @@ public interface InferenceEngine {
     /** False when the engine's native library is missing or this CPU cannot run it. */
     boolean isAvailable();
 
+    /** Whether "auto" may pick this engine; false for one that only runs here for testing. */
+    default boolean suitsAuto() { return isAvailable(); }
+
     /**
      * Where this engine expects the model for a role ("embed" or "chat").
      * Engines use different on-disk formats, so each has its own files.

@@ -12,8 +12,10 @@ import org.json.JSONObject;
  * {@link InferenceEngine}; callers never see which engine it is.
  *
  * The choice is the system property {@code persist.sys.jarvis.engine}:
- * "auto" (default), "cactus" or "llama". "auto" takes Cactus when its library
- * is present and otherwise llama.cpp. Handles belong to the engine that made
+ * "auto" (default), "cactus" or "llama". "auto" takes the first engine, Cactus
+ * before llama.cpp, that can run here and has a chat model installed, else the
+ * first that can run. On the x86_64 emulator Cactus runs only when asked for
+ * by name. Handles belong to the engine that made
  * them, so after {@link #select} every model and index must be reloaded
  * (JarvisService does this).
  */
@@ -48,9 +50,17 @@ public final class Inference {
                 return engine;
             }
         }
+        // First an engine that can run here and has a chat model installed,
+        // then one that can at least run (it gets a model later).
         for (InferenceEngine engine : ENGINES) {
-            if (engine.isAvailable()) {
+            if (engine.suitsAuto() && new java.io.File(engine.modelPath("chat")).exists()) {
                 Log.i(TAG, "Engine (auto): " + engine.name());
+                return engine;
+            }
+        }
+        for (InferenceEngine engine : ENGINES) {
+            if (engine.suitsAuto()) {
+                Log.i(TAG, "Engine (auto, no chat model yet): " + engine.name());
                 return engine;
             }
         }
